@@ -12,7 +12,10 @@ import base64
 import io
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
+
+if TYPE_CHECKING:
+    from PIL import Image, ImageDraw
 
 JST = timezone(timedelta(hours=9))
 
@@ -48,7 +51,7 @@ class DayGrid(NamedTuple):
 # ---------------------------------------------------------------------------
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="作業アクティビティのヒートマップ表示")
     parser.add_argument(
         "file", nargs="?", default="-", help="JSONファイル (省略でstdin)"
@@ -71,7 +74,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def load_data(file_path):
+def load_data(file_path: str) -> dict:
     if file_path == "-":
         return json.load(sys.stdin)
     with open(file_path) as f:
@@ -83,12 +86,12 @@ def load_data(file_path):
 # ---------------------------------------------------------------------------
 
 
-def utc_to_jst(utc_str):
+def utc_to_jst(utc_str: str) -> datetime:
     dt = datetime.strptime(utc_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     return dt.astimezone(JST)
 
 
-def build_grid(project):
+def build_grid(project: dict) -> tuple[dict[str, dict[int, dict]], int, int]:
     """スロットデータを日付別・時間別のグリッドに変換する"""
     slots = project["slots"]
     interval = project.get("interval_minutes", 10)
@@ -106,20 +109,22 @@ def build_grid(project):
     return days, interval, slots_per_hour
 
 
-def _value_to_level(val, max_val, num_levels=5):
+def _value_to_level(val: int | None, max_val: int, num_levels: int = 5) -> int:
     """値からヒートマップのレベル（0..num_levels-1）を計算する。Noneは-1を返す"""
     if val is None:
         return -1
     return min(num_levels - 1, int(val / max(max_val, 1) * (num_levels - 1)) + 1)
 
 
-def _rotated_hours(current_hour):
+def _rotated_hours(current_hour: int) -> list[int]:
     """current_hourの次の時間を起点にした24時間分のリストを返す"""
     start = (current_hour + 1) % 24
     return [(start + i) % 24 for i in range(24)]
 
 
-def compute_level_matrix(project, metric, num_levels=5):
+def compute_level_matrix(
+    project: dict, metric: str, num_levels: int = 5
+) -> list[DayGrid]:
     """プロジェクトのスロットデータからレベル行列を計算する。
     横軸は現在時刻が右端に来るようにローテーションされる。"""
     slots = project["slots"]
@@ -170,7 +175,7 @@ def compute_level_matrix(project, metric, num_levels=5):
     return result
 
 
-def _merge_overall(grids, metric):
+def _merge_overall(grids: list[DayGrid], metric: str) -> list[DayGrid]:
     """複数プロジェクトのグリッドを合算したOverallグリッドを生成する"""
     if len(grids) <= 1:
         return []
@@ -228,7 +233,7 @@ def _merge_overall(grids, metric):
     return result
 
 
-def prepare_all_grids(data, metric):
+def prepare_all_grids(data: dict, metric: str) -> list[DayGrid]:
     """全プロジェクトのグリッドを生成する。複数プロジェクトがある場合はOverallを先頭に追加"""
     grids = []
     for project in data["projects"]:
@@ -243,7 +248,7 @@ def prepare_all_grids(data, metric):
 # ---------------------------------------------------------------------------
 
 
-def render_ascii(grids):
+def render_ascii(grids: list[DayGrid]) -> None:
     blocks = " \u2591\u2592\u2593\u2588"  # ░▒▓█
 
     for g in grids:
@@ -273,7 +278,7 @@ def render_ascii(grids):
 # ---------------------------------------------------------------------------
 
 
-def render_color(grids):
+def render_color(grids: list[DayGrid]) -> None:
     from rich.console import Console
     from rich.text import Text
 
@@ -341,69 +346,69 @@ class HeatmapLayout:
     legend_end_margin: int = 12
 
     @property
-    def step(self):
+    def step(self) -> int:
         return self.cell_size + self.cell_gap
 
     @property
-    def width(self):
+    def width(self) -> int:
         return self.margin_left + self.cols * self.step + self.margin_right
 
     @property
-    def height(self):
+    def height(self) -> int:
         return self.margin_top + self.rows * self.step + self.margin_bottom
 
-    def cell_rect(self, row, col):
+    def cell_rect(self, row: int, col: int) -> list[int]:
         """セル(row, col)の矩形座標 [x0, y0, x1, y1]"""
         x = self.margin_left + col * self.step
         y = self.margin_top + row * self.step
         return [x, y, x + self.cell_size, y + self.cell_size]
 
-    def cell_center(self, row, col):
+    def cell_center(self, row: int, col: int) -> tuple[int, int]:
         """セル(row, col)の中心座標 (cx, cy)"""
         x = self.margin_left + col * self.step + self.cell_size // 2
         y = self.margin_top + row * self.step + self.cell_size // 2
         return (x, y)
 
-    def title_pos(self):
+    def title_pos(self) -> tuple[int, int]:
         """タイトルテキストの座標"""
         return (self.margin_left, self.title_y)
 
-    def header_pos(self, col):
+    def header_pos(self, col: int) -> tuple[int, int]:
         """時間軸ヘッダーのテキスト座標（anchor="mt"用）"""
         x = self.margin_left + col * self.step + self.cell_size // 2
         y = self.margin_top - self.header_offset
         return (x, y)
 
-    def label_pos(self, row):
+    def label_pos(self, row: int) -> tuple[int, int]:
         """左ラベルのテキスト座標（anchor="rm"用）"""
         x = self.margin_left - self.label_offset
         y = self.margin_top + row * self.step + self.cell_size // 2
         return (x, y)
 
-    def legend_pos(self):
+    def legend_pos(self) -> tuple[int, int]:
         """凡例バーの基準座標 (x, y)"""
         x = self.margin_left
         y = self.margin_top + self.rows * self.step + self.legend_gap
         return (x, y)
 
-    def legend_text_pos(self, base_x, base_y):
+    def legend_text_pos(self, base_x: int, base_y: int) -> tuple[int, int]:
         """凡例の「Less」テキスト座標"""
         return (base_x, base_y + self.legend_text_offset)
 
-    def legend_box_start(self, base_x):
+    def legend_box_start(self, base_x: int) -> int:
         """凡例のセル描画開始X座標"""
         return base_x + self.legend_label_width
 
-    def legend_box_rect(self, box_x, base_y):
+    def legend_box_rect(self, box_x: int, base_y: int) -> list[int]:
         """凡例セルの矩形座標"""
         return [box_x, base_y, box_x + self.cell_size, base_y + self.cell_size]
 
-    def legend_end_text_pos(self, box_x, base_y):
+    def legend_end_text_pos(self, box_x: int, base_y: int) -> tuple[int, int]:
         """凡例の「More」テキスト座標"""
         return (box_x + self.legend_end_margin, base_y + self.legend_text_offset)
 
 
-def is_iterm2():
+def is_iterm2() -> bool:
     """現在のターミナルがiTerm2かどうかを判定する"""
     return (
         os.environ.get("TERM_PROGRAM") == "iTerm.app"
@@ -411,7 +416,7 @@ def is_iterm2():
     )
 
 
-def _get_font(size):
+def _get_font(size: int):
     """フォントを取得する。利用可能なフォントがなければデフォルトを返す"""
     from PIL import ImageFont
 
@@ -429,7 +434,7 @@ def _get_font(size):
     return ImageFont.load_default()
 
 
-def _draw_legend(draw, font, layout):
+def _draw_legend(draw: "ImageDraw.Draw", font, layout: HeatmapLayout) -> None:
     """凡例バーを描画する"""
     lx, ly = layout.legend_pos()
     draw.text(layout.legend_text_pos(lx, ly), "Less", fill=IMG_TEXT_COLOR, font=font)
@@ -446,7 +451,9 @@ def _draw_legend(draw, font, layout):
     )
 
 
-def draw_heatmap_image(g, layout=None):
+def draw_heatmap_image(
+    g: DayGrid, layout: HeatmapLayout | None = None
+) -> "Image.Image":
     """単一のDayGridからPIL Imageオブジェクトを生成する"""
     from PIL import Image, ImageDraw
 
@@ -494,7 +501,12 @@ def draw_heatmap_image(g, layout=None):
     return img
 
 
-def emit_iterm2_image(img, name="heatmap.png", width="auto", height="auto"):
+def emit_iterm2_image(
+    img: "Image.Image",
+    name: str = "heatmap.png",
+    width: str = "auto",
+    height: str = "auto",
+) -> None:
     """PIL ImageをiTerm2インライン画像プロトコルで表示する"""
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -515,7 +527,7 @@ def emit_iterm2_image(img, name="heatmap.png", width="auto", height="auto"):
     sys.stdout.flush()
 
 
-def render_image(grids):
+def render_image(grids: list[DayGrid]) -> None:
     """iTerm2画像モードでヒートマップを表示する"""
     try:
         import PIL  # noqa: F401
@@ -538,7 +550,7 @@ def render_image(grids):
 # ---------------------------------------------------------------------------
 
 
-def main():
+def main() -> None:
     args = parse_args()
     data = load_data(args.file)
 
