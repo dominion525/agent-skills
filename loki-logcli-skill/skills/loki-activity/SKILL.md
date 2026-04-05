@@ -34,6 +34,7 @@ Grafana Lokiに蓄積されたClaude CodeのOTELテレメトリから、
 | `week` | 過去7日、現在のプロジェクト | `--since 168h` |
 | `month` | 過去30日、現在のプロジェクト | `--since 720h` |
 | `all week` | 過去7日、全プロジェクト | `--all --since 168h` |
+| `all --overall` | 過去24時間、全プロジェクト合算のみ | `--all` + heatmap.py `--overall` |
 
 数値はN日分を意味し、N * 24 で時間に換算する。
 `week` と `month` はそれぞれ 168h、720h のエイリアス。

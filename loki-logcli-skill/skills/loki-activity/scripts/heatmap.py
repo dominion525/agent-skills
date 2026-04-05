@@ -72,6 +72,7 @@ def parse_args() -> argparse.Namespace:
         choices=["total", "user_prompt", "api_request", "tool_use"],
         help="表示するメトリクス (デフォルト: total)",
     )
+    parser.add_argument("--overall", action="store_true", help="Overallのみ表示")
     return parser.parse_args()
 
 
@@ -644,6 +645,12 @@ def main() -> None:
         return
 
     grids = prepare_all_grids(data, args.metric)
+
+    if args.overall:
+        grids = [g for g in grids if g.namespace == "Overall"]
+        if not grids:
+            print("Overallデータがありません（複数プロジェクトが必要です）")
+            return
 
     if args.output:
         save_image(grids, args.output)
