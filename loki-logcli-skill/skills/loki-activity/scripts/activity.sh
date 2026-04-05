@@ -8,49 +8,55 @@ ALL=false
 MODE="summary"
 INTERVAL=10  # サマリーの区切り（分）
 
-# ===== 引数パース =====
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --since)    SINCE="$2";    shift 2 ;;
-    --project)  PROJECT="$2";  shift 2 ;;
-    --all)      ALL=true;      shift ;;
-    --detail)   MODE="detail"; shift ;;
-    --interval) INTERVAL="$2"; shift 2 ;;
-    *)          echo "Unknown option: $1" >&2; exit 1 ;;
-  esac
-done
+# ---------------------------------------------------------------------------
+# 関数定義
+# ---------------------------------------------------------------------------
 
-# --projectも--allも指定されていなければ、カレントリポジトリ名を使う
-if [[ -z "$PROJECT" && "$ALL" == false ]]; then
-  PROJECT=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null) || true
-fi
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --since)    SINCE="$2";    shift 2 ;;
+      --project)  PROJECT="$2";  shift 2 ;;
+      --all)      ALL=true;      shift ;;
+      --detail)   MODE="detail"; shift ;;
+      --interval) INTERVAL="$2"; shift 2 ;;
+      *)          echo "Unknown option: $1" >&2; exit 1 ;;
+    esac
+  done
+}
 
-# ===== logcliクエリ構築 =====
-if [[ -n "$PROJECT" ]]; then
-  QUERY="{service_name=\"claude-code\", service_namespace=~\".*${PROJECT}.*\"}"
-else
-  QUERY='{service_name="claude-code"}'
-fi
+resolve_project() {
+  if [[ -z "$PROJECT" && "$ALL" == false ]]; then
+    PROJECT=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null) || true
+  fi
+}
 
-# ===== logcli実行 =====
-RAW=$(logcli query "$QUERY" \
-  --since="$SINCE" \
-  --limit=0 \
-  --quiet \
-  --include-label=service_namespace \
-  --include-label=event_name \
-  --include-label=event_timestamp \
-  --output=jsonl 2>/dev/null) || true
+build_query() {
+  if [[ -n "$PROJECT" ]]; then
+    echo "{service_name=\"claude-code\", service_namespace=~\".*${PROJECT}.*\"}"
+  else
+    echo '{service_name="claude-code"}'
+  fi
+}
 
-# イベント0件チェック
-if [[ -z "$RAW" ]]; then
+fetch_events() {
+  local query="$1"
+  logcli query "$query" \
+    --since="$SINCE" \
+    --limit=0 \
+    --quiet \
+    --include-label=service_namespace \
+    --include-label=event_name \
+    --include-label=event_timestamp \
+    --output=jsonl 2>/dev/null || true
+}
+
+empty_response() {
   echo '{"query_params":{"since":"'"$SINCE"'","project_filter":"'"$PROJECT"'","mode":"'"$MODE"'"},"projects":[]}'
-  exit 0
-fi
+}
 
-if [[ "$MODE" == "detail" ]]; then
-  # 全イベント一覧
-  echo "$RAW" | jq -s \
+format_detail() {
+  jq -s \
     --arg since "$SINCE" \
     --arg project "$PROJECT" \
   '
@@ -74,9 +80,10 @@ if [[ "$MODE" == "detail" ]]; then
       projects: .
     }
   '
-else
-  # 時間帯ごとの要約（デフォルト）
-  echo "$RAW" | jq -s \
+}
+
+format_summary() {
+  jq -s \
     --arg since "$SINCE" \
     --arg project "$PROJECT" \
     --argjson interval "$INTERVAL" \
@@ -130,4 +137,31 @@ else
       projects: .
     }
   '
+}
+
+main() {
+  parse_args "$@"
+  resolve_project
+
+  local query
+  query=$(build_query)
+
+  local raw
+  raw=$(fetch_events "$query")
+
+  if [[ -z "$raw" ]]; then
+    empty_response
+  elif [[ "$MODE" == "detail" ]]; then
+    echo "$raw" | format_detail
+  else
+    echo "$raw" | format_summary
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# エントリポイント（sourceされた場合は実行しない）
+# ---------------------------------------------------------------------------
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
 fi

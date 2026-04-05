@@ -1,0 +1,8 @@
+{"labels":{"service_namespace":"alpha","event_name":"user_prompt","event_timestamp":"2026-04-05T04:00:10.123Z"},"line":"claude_code.user_prompt","timestamp":"2026-04-05T13:00:10+09:00"}
+{"labels":{"service_namespace":"alpha","event_name":"api_request","event_timestamp":"2026-04-05T04:00:15.456Z"},"line":"claude_code.api_request","timestamp":"2026-04-05T13:00:15+09:00"}
+{"labels":{"service_namespace":"alpha","event_name":"tool_result","event_timestamp":"2026-04-05T04:00:20.789Z"},"line":"claude_code.tool_result","timestamp":"2026-04-05T13:00:20+09:00"}
+{"labels":{"service_namespace":"alpha","event_name":"user_prompt","event_timestamp":"2026-04-05T04:10:05.111Z"},"line":"claude_code.user_prompt","timestamp":"2026-04-05T13:10:05+09:00"}
+{"labels":{"service_namespace":"alpha","event_name":"api_request","event_timestamp":"2026-04-05T04:10:30.222Z"},"line":"claude_code.api_request","timestamp":"2026-04-05T13:10:30+09:00"}
+{"labels":{"service_namespace":"beta","event_name":"user_prompt","event_timestamp":"2026-04-05T04:00:05.333Z"},"line":"claude_code.user_prompt","timestamp":"2026-04-05T13:00:05+09:00"}
+{"labels":{"service_namespace":"beta","event_name":"tool_decision","event_timestamp":"2026-04-05T04:00:12.444Z"},"line":"claude_code.tool_decision","timestamp":"2026-04-05T13:00:12+09:00"}
+{"labels":{"service_namespace":"","event_name":"api_request","event_timestamp":"2026-04-05T04:20:00.555Z"},"line":"claude_code.api_request","timestamp":"2026-04-05T13:20:00+09:00"}
