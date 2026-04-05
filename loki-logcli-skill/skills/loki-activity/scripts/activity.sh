@@ -4,17 +4,26 @@ set -euo pipefail
 # ===== デフォルト値 =====
 SINCE="24h"
 PROJECT=""
-GAP_THRESHOLD=900
+ALL=false
+MODE="summary"
+INTERVAL=10  # サマリーの区切り（分）
 
 # ===== 引数パース =====
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --since)   SINCE="$2";         shift 2 ;;
-    --project) PROJECT="$2";       shift 2 ;;
-    --gap)     GAP_THRESHOLD="$2"; shift 2 ;;
-    *)         echo "Unknown option: $1" >&2; exit 1 ;;
+    --since)    SINCE="$2";    shift 2 ;;
+    --project)  PROJECT="$2";  shift 2 ;;
+    --all)      ALL=true;      shift ;;
+    --detail)   MODE="detail"; shift ;;
+    --interval) INTERVAL="$2"; shift 2 ;;
+    *)          echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
+
+# --projectも--allも指定されていなければ、カレントリポジトリ名を使う
+if [[ -z "$PROJECT" && "$ALL" == false ]]; then
+  PROJECT=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null) || true
+fi
 
 # ===== logcliクエリ構築 =====
 if [[ -n "$PROJECT" ]]; then
@@ -35,100 +44,90 @@ RAW=$(logcli query "$QUERY" \
 
 # イベント0件チェック
 if [[ -z "$RAW" ]]; then
-  jq -n \
-    --arg since "$SINCE" \
-    --arg project "$PROJECT" \
-    --argjson gap "$GAP_THRESHOLD" \
-    '{
-      query_params: {since: $since, project_filter: $project, gap_threshold_sec: $gap},
-      projects: [],
-      grand_total_sec: 0,
-      grand_total_human: "0m"
-    }'
+  echo '{"query_params":{"since":"'"$SINCE"'","project_filter":"'"$PROJECT"'","mode":"'"$MODE"'"},"projects":[]}'
   exit 0
 fi
 
-# ===== jqで作業ブロック集計 =====
-echo "$RAW" | jq -s \
-  --argjson gap "$GAP_THRESHOLD" \
-  --arg since "$SINCE" \
-  --arg project "$PROJECT" \
-'
-# 秒を人間可読に変換
-def human_duration:
-  if . >= 3600 then
-    "\(. / 3600 | floor)h \((. % 3600) / 60 | floor)m"
-  elif . >= 60 then
-    "\(. / 60 | floor)m"
-  else
-    "\(.)s"
-  end;
+if [[ "$MODE" == "detail" ]]; then
+  # 全イベント一覧
+  echo "$RAW" | jq -s \
+    --arg since "$SINCE" \
+    --arg project "$PROJECT" \
+  '
+  [.[] | {
+    namespace: (if (.labels.service_namespace // "") == "" then "(unset)" else .labels.service_namespace end),
+    timestamp: .labels.event_timestamp,
+    event: .labels.event_name
+  }]
+  | sort_by(.timestamp)
+  | group_by(.namespace)
+  | map({
+      namespace: .[0].namespace,
+      events: [.[] | {timestamp: .timestamp, event: .event}]
+    })
+  | {
+      query_params: {
+        since: $since,
+        project_filter: $project,
+        mode: "detail"
+      },
+      projects: .
+    }
+  '
+else
+  # 時間帯ごとの要約（デフォルト）
+  echo "$RAW" | jq -s \
+    --arg since "$SINCE" \
+    --arg project "$PROJECT" \
+    --argjson interval "$INTERVAL" \
+  '
+  def to_epoch:
+    sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
 
-# ISO8601からミリ秒を除去してエポック秒に変換
-def to_epoch:
-  sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+  # 区切り秒数
+  ($interval * 60) as $bucket_sec |
 
-# 1. イベントを構造化
-[.[] | {
-  ns: (if (.labels.service_namespace // "") == "" then "(unset)" else .labels.service_namespace end),
-  ts: .labels.event_timestamp,
-  ev: .labels.event_name
-}]
-| sort_by(.ts)
-
-# 2. namespace別にグループ化
-| group_by(.ns)
-| map(
-    sort_by(.ts) as $sorted
-    | ($sorted | first | .ns) as $ns
-
-    # 3. 作業ブロック検出
-    | $sorted
-    | reduce .[] as $e (
-        {blocks: [], cs: null, ce: null};
-        if .cs == null then
-          .cs = $e.ts | .ce = $e.ts
-        else
-          (($e.ts | to_epoch) - (.ce | to_epoch)) as $diff
-          | if $diff > $gap then
-              .blocks += [{
-                start: .cs,
-                end: .ce,
-                duration_sec: ((.ce | to_epoch) - (.cs | to_epoch))
-              }]
-              | .cs = $e.ts | .ce = $e.ts
-            else
-              .ce = $e.ts
-            end
-        end
-      )
-    # 最後のブロックを追加
-    | .blocks += [{
-        start: .cs,
-        end: .ce,
-        duration_sec: ((.ce | to_epoch) - (.cs | to_epoch))
+  [.[] | {
+    namespace: (if (.labels.service_namespace // "") == "" then "(unset)" else .labels.service_namespace end),
+    timestamp: .labels.event_timestamp,
+    event: .labels.event_name
+  }]
+  | sort_by(.timestamp)
+  | group_by(.namespace)
+  | map(
+      .[0].namespace as $ns |
+      # 各イベントにバケットキーを付与
+      [.[] | {
+        event: .event,
+        ts: .timestamp,
+        epoch: (.timestamp | to_epoch),
+        bucket: ((.timestamp | to_epoch) / $bucket_sec | floor * $bucket_sec)
       }]
-    | .blocks |= map(. + {duration_human: (.duration_sec | human_duration)})
-    | {
-        namespace: $ns,
-        blocks: .blocks,
-        total_sec: ([.blocks[].duration_sec] | add // 0),
-        total_human: (([.blocks[].duration_sec] | add // 0) | human_duration),
-        block_count: (.blocks | length)
-      }
-  )
-| sort_by(-.total_sec)
-
-# 4. 全体サマリー
-| {
-    query_params: {
-      since: $since,
-      project_filter: $project,
-      gap_threshold_sec: $gap,
-      generated_at: (now | strftime("%Y-%m-%dT%H:%M:%S+09:00"))
-    },
-    projects: .,
-    grand_total_sec: ([.[].total_sec] | add // 0),
-    grand_total_human: (([.[].total_sec] | add // 0) | human_duration)
-  }
-'
+      | group_by(.bucket)
+      | map(
+          .[0].bucket as $b |
+          {
+            time_utc: ($b | strftime("%Y-%m-%dT%H:%M:%SZ")),
+            total: length,
+            user_prompt: [.[] | select(.event == "user_prompt")] | length,
+            api_request: [.[] | select(.event == "api_request")] | length,
+            tool_use: [.[] | select(.event == "tool_result" or .event == "tool_decision")] | length
+          }
+        )
+      | {
+          namespace: $ns,
+          interval_minutes: $interval,
+          slots: .
+        }
+    )
+  | {
+      query_params: {
+        since: $since,
+        project_filter: $project,
+        mode: "summary",
+        interval_minutes: $interval
+      },
+      projects: .
+    }
+  '
+fi
