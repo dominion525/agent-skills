@@ -143,12 +143,68 @@ def compute_level_matrix(project, metric, num_levels=5):
     return result
 
 
+def _merge_overall(grids, metric):
+    """複数プロジェクトのグリッドを合算したOverallグリッドを生成する"""
+    if len(grids) <= 1:
+        return []
+
+    # day_keyごとにグループ化
+    by_day = {}
+    for g in grids:
+        if g.day_key not in by_day:
+            by_day[g.day_key] = []
+        by_day[g.day_key].append(g)
+
+    result = []
+    for day_key, day_grids in by_day.items():
+        ref = day_grids[0]
+        rows = ref.slots_per_hour
+
+        # raw_valuesを合算
+        merged_raw = []
+        for m_idx in range(rows):
+            raw_row = []
+            for col in range(24):
+                total = None
+                for g in day_grids:
+                    val = g.raw_values[m_idx][col]
+                    if val is not None:
+                        total = (total or 0) + val
+                raw_row.append(total)
+            merged_raw.append(raw_row)
+
+        # 合算後のmax_valとlevelsを再計算
+        all_vals = [v for row in merged_raw for v in row if v is not None]
+        max_val = max(all_vals) if all_vals else 1
+
+        merged_levels = []
+        for raw_row in merged_raw:
+            level_row = []
+            for val in raw_row:
+                if val is None:
+                    level_row.append(-1)
+                else:
+                    level_row.append(min(4, int(val / max(max_val, 1) * 4) + 1))
+            merged_levels.append(level_row)
+
+        result.append(DayGrid(
+            namespace="Overall", day_key=day_key, metric=metric,
+            interval=ref.interval, slots_per_hour=rows,
+            max_val=max_val, levels=merged_levels, raw_values=merged_raw,
+            hour_labels=ref.hour_labels,
+        ))
+
+    return result
+
+
 def prepare_all_grids(data, metric):
-    """全プロジェクトのグリッドを生成する"""
+    """全プロジェクトのグリッドを生成する。複数プロジェクトがある場合はOverallを先頭に追加"""
     grids = []
     for project in data["projects"]:
         grids.extend(compute_level_matrix(project, metric))
-    return grids
+
+    overall = _merge_overall(grids, metric)
+    return overall + grids
 
 
 # ---------------------------------------------------------------------------
@@ -262,15 +318,15 @@ def _get_font(size):
 
 def _draw_legend(draw, font, x, y):
     """凡例バーを描画する"""
-    draw.text((x, y + 6), "\u5c11", fill=IMG_TEXT_COLOR, font=font)  # 少
-    box_x = x + 56
+    draw.text((x, y + 6), "Less", fill=IMG_TEXT_COLOR, font=font)
+    box_x = x + 80
     for color in PALETTE:
         draw.rounded_rectangle(
             [box_x, y, box_x + IMG_CELL_SIZE, y + IMG_CELL_SIZE],
             radius=5, fill=color,
         )
         box_x += IMG_CELL_SIZE + IMG_CELL_GAP
-    draw.text((box_x + 12, y + 6), "\u591a", fill=IMG_TEXT_COLOR, font=font)  # 多
+    draw.text((box_x + 12, y + 6), "More", fill=IMG_TEXT_COLOR, font=font)
 
 
 def draw_heatmap_image(g):
