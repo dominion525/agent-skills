@@ -18,17 +18,18 @@ JST = timezone(timedelta(hours=9))
 
 # GitHubの草風パレット（5段階）
 PALETTE = [
-    (22, 27, 34),     # level 0: データなし（ほぼ黒）
-    (14, 68, 41),     # level 1: 薄緑
-    (0, 109, 50),     # level 2: 緑
-    (38, 166, 65),    # level 3: 明るい緑
-    (57, 211, 83),    # level 4: 最も明るい緑
+    (22, 27, 34),  # level 0: データなし（ほぼ黒）
+    (14, 68, 41),  # level 1: 薄緑
+    (0, 109, 50),  # level 2: 緑
+    (38, 166, 65),  # level 3: 明るい緑
+    (57, 211, 83),  # level 4: 最も明るい緑
 ]
 
 
 # ---------------------------------------------------------------------------
 # データ構造
 # ---------------------------------------------------------------------------
+
 
 class DayGrid(NamedTuple):
     namespace: str
@@ -37,26 +38,36 @@ class DayGrid(NamedTuple):
     interval: int
     slots_per_hour: int
     max_val: int
-    levels: list[list[int]]              # [m_idx][col] = 0..4, データなしは -1
-    raw_values: list[list[int | None]]   # [m_idx][col] = 元の数値 or None
-    hour_labels: list[int]               # 各列の時間ラベル（0-23）
+    levels: list[list[int]]  # [m_idx][col] = 0..4, データなしは -1
+    raw_values: list[list[int | None]]  # [m_idx][col] = 元の数値 or None
+    hour_labels: list[int]  # 各列の時間ラベル（0-23）
 
 
 # ---------------------------------------------------------------------------
 # 引数・データ読み込み
 # ---------------------------------------------------------------------------
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="作業アクティビティのヒートマップ表示")
-    parser.add_argument("file", nargs="?", default="-", help="JSONファイル (省略でstdin)")
+    parser.add_argument(
+        "file", nargs="?", default="-", help="JSONファイル (省略でstdin)"
+    )
 
     mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument("--color", action="store_true", help="TrueColorモードで表示")
-    mode_group.add_argument("--image", action="store_true", help="iTerm2画像モードで表示")
+    mode_group.add_argument(
+        "--color", action="store_true", help="TrueColorモードで表示"
+    )
+    mode_group.add_argument(
+        "--image", action="store_true", help="iTerm2画像モードで表示"
+    )
 
-    parser.add_argument("--metric", default="total",
-                        choices=["total", "user_prompt", "api_request", "tool_use"],
-                        help="表示するメトリクス (デフォルト: total)")
+    parser.add_argument(
+        "--metric",
+        default="total",
+        choices=["total", "user_prompt", "api_request", "tool_use"],
+        help="表示するメトリクス (デフォルト: total)",
+    )
     return parser.parse_args()
 
 
@@ -70,6 +81,7 @@ def load_data(file_path):
 # ---------------------------------------------------------------------------
 # グリッド計算（全レンダラー共通）
 # ---------------------------------------------------------------------------
+
 
 def utc_to_jst(utc_str):
     dt = datetime.strptime(utc_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
@@ -141,12 +153,19 @@ def compute_level_matrix(project, metric, num_levels=5):
             levels.append(level_row)
             raw_values.append(raw_row)
 
-        result.append(DayGrid(
-            namespace=ns, day_key=day_key, metric=metric,
-            interval=interval, slots_per_hour=slots_per_hour,
-            max_val=max_val, levels=levels, raw_values=raw_values,
-            hour_labels=hour_order,
-        ))
+        result.append(
+            DayGrid(
+                namespace=ns,
+                day_key=day_key,
+                metric=metric,
+                interval=interval,
+                slots_per_hour=slots_per_hour,
+                max_val=max_val,
+                levels=levels,
+                raw_values=raw_values,
+                hour_labels=hour_order,
+            )
+        )
 
     return result
 
@@ -189,16 +208,22 @@ def _merge_overall(grids, metric):
         max_val = max(all_vals, default=1)
 
         merged_levels = [
-            [_value_to_level(val, max_val) for val in raw_row]
-            for raw_row in merged_raw
+            [_value_to_level(val, max_val) for val in raw_row] for raw_row in merged_raw
         ]
 
-        result.append(DayGrid(
-            namespace="Overall", day_key=day_key, metric=metric,
-            interval=ref.interval, slots_per_hour=rows,
-            max_val=max_val, levels=merged_levels, raw_values=merged_raw,
-            hour_labels=ref.hour_labels,
-        ))
+        result.append(
+            DayGrid(
+                namespace="Overall",
+                day_key=day_key,
+                metric=metric,
+                interval=ref.interval,
+                slots_per_hour=rows,
+                max_val=max_val,
+                levels=merged_levels,
+                raw_values=merged_raw,
+                hour_labels=ref.hour_labels,
+            )
+        )
 
     return result
 
@@ -216,6 +241,7 @@ def prepare_all_grids(data, metric):
 # ---------------------------------------------------------------------------
 # レンダラー: ASCII
 # ---------------------------------------------------------------------------
+
 
 def render_ascii(grids):
     blocks = " \u2591\u2592\u2593\u2588"  # ░▒▓█
@@ -246,6 +272,7 @@ def render_ascii(grids):
 # レンダラー: TrueColor (rich)
 # ---------------------------------------------------------------------------
 
+
 def render_color(grids):
     from rich.console import Console
     from rich.text import Text
@@ -253,7 +280,9 @@ def render_color(grids):
     console = Console()
 
     for g in grids:
-        console.print(f"\n[bold][ {g.namespace} ][/bold] {g.day_key}  metric={g.metric}")
+        console.print(
+            f"\n[bold][ {g.namespace} ][/bold] {g.day_key}  metric={g.metric}"
+        )
 
         header = Text("       ")
         for h in g.hour_labels:
@@ -408,10 +437,13 @@ def _draw_legend(draw, font, layout):
     for color in PALETTE:
         draw.rounded_rectangle(
             layout.legend_box_rect(box_x, ly),
-            radius=layout.cell_radius, fill=color,
+            radius=layout.cell_radius,
+            fill=color,
         )
         box_x += layout.step
-    draw.text(layout.legend_end_text_pos(box_x, ly), "More", fill=IMG_TEXT_COLOR, font=font)
+    draw.text(
+        layout.legend_end_text_pos(box_x, ly), "More", fill=IMG_TEXT_COLOR, font=font
+    )
 
 
 def draw_heatmap_image(g, layout=None):
@@ -430,12 +462,20 @@ def draw_heatmap_image(g, layout=None):
 
     # 時間軸ヘッダー
     for col, h in enumerate(g.hour_labels):
-        draw.text(layout.header_pos(col), str(h), fill=IMG_TEXT_COLOR, font=font, anchor="mt")
+        draw.text(
+            layout.header_pos(col), str(h), fill=IMG_TEXT_COLOR, font=font, anchor="mt"
+        )
 
     # 左ラベル
     for m_idx in range(layout.rows):
         minute = m_idx * g.interval
-        draw.text(layout.label_pos(m_idx), f":{minute:02d}", fill=IMG_TEXT_COLOR, font=font, anchor="rm")
+        draw.text(
+            layout.label_pos(m_idx),
+            f":{minute:02d}",
+            fill=IMG_TEXT_COLOR,
+            font=font,
+            anchor="rm",
+        )
 
     # セル描画
     for m_idx in range(layout.rows):
@@ -444,7 +484,8 @@ def draw_heatmap_image(g, layout=None):
             color = PALETTE[max(0, level)]
             draw.rounded_rectangle(
                 layout.cell_rect(m_idx, col),
-                radius=layout.cell_radius, fill=color,
+                radius=layout.cell_radius,
+                fill=color,
             )
 
     # 凡例
@@ -477,7 +518,7 @@ def emit_iterm2_image(img, name="heatmap.png", width="auto", height="auto"):
 def render_image(grids):
     """iTerm2画像モードでヒートマップを表示する"""
     try:
-        from PIL import Image, ImageDraw
+        import PIL  # noqa: F401
     except ImportError:
         print(
             "エラー: --image オプションには Pillow が必要です。\n"
@@ -495,6 +536,7 @@ def render_image(grids):
 # ---------------------------------------------------------------------------
 # エントリポイント
 # ---------------------------------------------------------------------------
+
 
 def main():
     args = parse_args()

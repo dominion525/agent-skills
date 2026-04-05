@@ -1,8 +1,6 @@
 """heatmap.py のテスト"""
 
-import json
-import sys
-from datetime import datetime, timezone, timedelta
+from datetime import timezone, timedelta
 from io import StringIO
 from unittest.mock import patch
 
@@ -33,6 +31,7 @@ JST = timezone(timedelta(hours=9))
 # ---------------------------------------------------------------------------
 # フィクスチャ
 # ---------------------------------------------------------------------------
+
 
 def _make_slot(hour, minute, total=10, user_prompt=3, api_request=4, tool_use=3):
     """テスト用スロットを生成する"""
@@ -110,6 +109,7 @@ def _make_daygrid(hour_labels=None, levels=None, raw_values=None):
 # テスト: _value_to_level
 # ---------------------------------------------------------------------------
 
+
 class TestValueToLevel:
     def test_none_returns_minus_one(self):
         assert _value_to_level(None, 100) == -1
@@ -141,6 +141,7 @@ class TestValueToLevel:
 # テスト: _rotated_hours
 # ---------------------------------------------------------------------------
 
+
 class TestRotatedHours:
     def test_basic_rotation(self):
         hours = _rotated_hours(16)
@@ -167,6 +168,7 @@ class TestRotatedHours:
 # テスト: utc_to_jst
 # ---------------------------------------------------------------------------
 
+
 class TestUtcToJst:
     def test_basic_conversion(self):
         result = utc_to_jst("2026-04-05T04:00:00Z")
@@ -188,6 +190,7 @@ class TestUtcToJst:
 # ---------------------------------------------------------------------------
 # テスト: build_grid
 # ---------------------------------------------------------------------------
+
 
 class TestBuildGrid:
     def test_basic_grid(self, sample_project):
@@ -215,6 +218,7 @@ class TestBuildGrid:
 # ---------------------------------------------------------------------------
 # テスト: compute_level_matrix
 # ---------------------------------------------------------------------------
+
 
 class TestComputeLevelMatrix:
     def test_empty_slots(self):
@@ -254,7 +258,11 @@ class TestComputeLevelMatrix:
 
     @freeze_time("2026-04-05T14:30:00")  # UTC 14:30 = JST 23:30
     def test_hour_labels_midnight_wrap(self):
-        project = {"namespace": "x", "interval_minutes": 10, "slots": [_make_slot(0, 0)]}
+        project = {
+            "namespace": "x",
+            "interval_minutes": 10,
+            "slots": [_make_slot(0, 0)],
+        }
         grids = compute_level_matrix(project, "total")
         g = grids[0]
         # JST 23:30 -> start_hour = (23+1)%24 = 0
@@ -273,10 +281,15 @@ class TestComputeLevelMatrix:
 # テスト: _merge_overall
 # ---------------------------------------------------------------------------
 
+
 class TestMergeOverall:
     @freeze_time("2026-04-05T07:00:00")  # UTC 07:00 = JST 16:00
     def test_single_project_returns_empty(self):
-        project = {"namespace": "solo", "interval_minutes": 10, "slots": [_make_slot(4, 0)]}
+        project = {
+            "namespace": "solo",
+            "interval_minutes": 10,
+            "slots": [_make_slot(4, 0)],
+        }
         grids = compute_level_matrix(project, "total")
         result = _merge_overall(grids, "total")
         assert result == []
@@ -312,12 +325,17 @@ class TestMergeOverall:
 # テスト: prepare_all_grids
 # ---------------------------------------------------------------------------
 
+
 class TestPrepareAllGrids:
     @freeze_time("2026-04-05T07:00:00")  # UTC 07:00 = JST 16:00
     def test_single_project_no_overall(self):
         data = {
             "projects": [
-                {"namespace": "solo", "interval_minutes": 10, "slots": [_make_slot(4, 0)]},
+                {
+                    "namespace": "solo",
+                    "interval_minutes": 10,
+                    "slots": [_make_slot(4, 0)],
+                },
             ],
         }
         grids = prepare_all_grids(data, "total")
@@ -333,6 +351,7 @@ class TestPrepareAllGrids:
 # ---------------------------------------------------------------------------
 # テスト: render_ascii
 # ---------------------------------------------------------------------------
+
 
 class TestRenderAscii:
     def test_output_contains_namespace(self, capsys):
@@ -389,20 +408,11 @@ class TestRenderAscii:
 # テスト: render_color
 # ---------------------------------------------------------------------------
 
+
 class TestRenderColor:
     def test_output_contains_namespace(self):
         g = _make_daygrid()
-        # richのConsoleをStringIOに出力
-        from rich.console import Console
-        buf = StringIO()
-        console = Console(file=buf, force_terminal=True)
-        # render_colorは内部でConsole()を作るので、monkeypatchで差し替え
-        with patch("heatmap.render_color") as _:
-            pass
-        # 直接呼んでcapsysの代わりにStringIOに出力させるのは難しいので
-        # 関数内部のconsoleをpatchする方が確実
-        # ここではシンプルにrender_colorを呼んで例外が出ないことを確認
-        render_color([g])
+        render_color([g])  # 例外が出ないこと
 
     def test_no_error_with_data(self):
         levels = [[-1] * 24 for _ in range(6)]
@@ -423,6 +433,7 @@ class TestRenderColor:
 # テスト: draw_heatmap_image
 # ---------------------------------------------------------------------------
 
+
 class TestHeatmapLayout:
     def test_step(self):
         layout = HeatmapLayout(rows=6)
@@ -430,14 +441,22 @@ class TestHeatmapLayout:
 
     def test_width_height(self):
         layout = HeatmapLayout(rows=6)
-        assert layout.width == layout.margin_left + 24 * layout.step + layout.margin_right
-        assert layout.height == layout.margin_top + 6 * layout.step + layout.margin_bottom
+        assert (
+            layout.width == layout.margin_left + 24 * layout.step + layout.margin_right
+        )
+        assert (
+            layout.height == layout.margin_top + 6 * layout.step + layout.margin_bottom
+        )
 
     def test_cell_rect(self):
         layout = HeatmapLayout(rows=6)
         rect = layout.cell_rect(0, 0)
-        assert rect == [layout.margin_left, layout.margin_top,
-                        layout.margin_left + layout.cell_size, layout.margin_top + layout.cell_size]
+        assert rect == [
+            layout.margin_left,
+            layout.margin_top,
+            layout.margin_left + layout.cell_size,
+            layout.margin_top + layout.cell_size,
+        ]
 
     def test_cell_rect_offset(self):
         layout = HeatmapLayout(rows=6)
@@ -475,7 +494,9 @@ class TestHeatmapLayout:
         assert ly == layout.margin_top + 6 * layout.step + layout.legend_gap
 
     def test_custom_parameters(self):
-        layout = HeatmapLayout(rows=4, cell_size=20, cell_gap=4, margin_left=50, margin_top=30)
+        layout = HeatmapLayout(
+            rows=4, cell_size=20, cell_gap=4, margin_left=50, margin_top=30
+        )
         assert layout.step == 24
         assert layout.width == 50 + 24 * 24 + layout.margin_right
         cx, cy = layout.cell_center(1, 2)
@@ -531,9 +552,11 @@ class TestDrawHeatmapImage:
 # テスト: emit_iterm2_image
 # ---------------------------------------------------------------------------
 
+
 class TestEmitIterm2Image:
     def test_protocol_prefix(self):
         from PIL import Image
+
         img = Image.new("RGB", (10, 10), (0, 0, 0))
         buf = StringIO()
         with patch("sys.stdout", buf):
@@ -544,6 +567,7 @@ class TestEmitIterm2Image:
 
     def test_contains_base64_png(self):
         from PIL import Image
+
         img = Image.new("RGB", (10, 10), (0, 0, 0))
         buf = StringIO()
         with patch("sys.stdout", buf):
@@ -556,6 +580,7 @@ class TestEmitIterm2Image:
 # ---------------------------------------------------------------------------
 # テスト: is_iterm2
 # ---------------------------------------------------------------------------
+
 
 class TestIsIterm2:
     def test_iterm2_detected(self):
