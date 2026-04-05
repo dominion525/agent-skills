@@ -11,6 +11,7 @@ import argparse
 import base64
 import io
 from datetime import datetime, timezone, timedelta
+from dataclasses import dataclass
 from typing import NamedTuple
 
 JST = timezone(timedelta(hours=9))
@@ -93,6 +94,19 @@ def build_grid(project):
     return days, interval, slots_per_hour
 
 
+def _value_to_level(val, max_val, num_levels=5):
+    """値からヒートマップのレベル（0..num_levels-1）を計算する。Noneは-1を返す"""
+    if val is None:
+        return -1
+    return min(num_levels - 1, int(val / max(max_val, 1) * (num_levels - 1)) + 1)
+
+
+def _rotated_hours(current_hour):
+    """current_hourの次の時間を起点にした24時間分のリストを返す"""
+    start = (current_hour + 1) % 24
+    return [(start + i) % 24 for i in range(24)]
+
+
 def compute_level_matrix(project, metric, num_levels=5):
     """プロジェクトのスロットデータからレベル行列を計算する。
     横軸は現在時刻が右端に来るようにローテーションされる。"""
@@ -101,15 +115,10 @@ def compute_level_matrix(project, metric, num_levels=5):
         return []
 
     ns = project["namespace"]
-    values = [s[metric] for s in slots]
-    max_val = max(values) if values else 1
+    max_val = max((s[metric] for s in slots), default=1)
 
     days, interval, slots_per_hour = build_grid(project)
-
-    # 現在時刻の次の時間を起点にして、24時間分をローテーション
-    now_jst = datetime.now(JST)
-    start_hour = (now_jst.hour + 1) % 24
-    hour_order = [(start_hour + i) % 24 for i in range(24)]
+    hour_order = _rotated_hours(datetime.now(JST).hour)
 
     result = []
 
@@ -127,8 +136,7 @@ def compute_level_matrix(project, metric, num_levels=5):
                     raw_row.append(None)
                 else:
                     val = slot[metric]
-                    level = min(num_levels - 1, int(val / max(max_val, 1) * (num_levels - 1)) + 1)
-                    level_row.append(level)
+                    level_row.append(_value_to_level(val, max_val, num_levels))
                     raw_row.append(val)
             levels.append(level_row)
             raw_values.append(raw_row)
@@ -169,23 +177,21 @@ def _merge_overall(grids, metric):
                 for g in day_grids:
                     val = g.raw_values[m_idx][col]
                     if val is not None:
-                        total = (total or 0) + val
+                        if total is None:
+                            total = val
+                        else:
+                            total += val
                 raw_row.append(total)
             merged_raw.append(raw_row)
 
         # 合算後のmax_valとlevelsを再計算
         all_vals = [v for row in merged_raw for v in row if v is not None]
-        max_val = max(all_vals) if all_vals else 1
+        max_val = max(all_vals, default=1)
 
-        merged_levels = []
-        for raw_row in merged_raw:
-            level_row = []
-            for val in raw_row:
-                if val is None:
-                    level_row.append(-1)
-                else:
-                    level_row.append(min(4, int(val / max(max_val, 1) * 4) + 1))
-            merged_levels.append(level_row)
+        merged_levels = [
+            [_value_to_level(val, max_val) for val in raw_row]
+            for raw_row in merged_raw
+        ]
 
         result.append(DayGrid(
             namespace="Overall", day_key=day_key, metric=metric,
@@ -284,31 +290,26 @@ IMG_TEXT_COLOR = (139, 148, 158)
 IMG_FONT_SIZE = 32
 
 
+@dataclass
 class HeatmapLayout:
     """ヒートマップ画像のレイアウト計算を担うモデル"""
 
-    def __init__(self, rows, cols=24, cell_size=42, cell_gap=7,
-                 margin_left=180, margin_top=110, margin_bottom=100,
-                 margin_right=30, cell_radius=5,
-                 title_y=12, header_offset=36, label_offset=16,
-                 legend_gap=10, legend_text_offset=6,
-                 legend_label_width=80, legend_end_margin=12):
-        self.rows = rows
-        self.cols = cols
-        self.cell_size = cell_size
-        self.cell_gap = cell_gap
-        self.margin_left = margin_left
-        self.margin_top = margin_top
-        self.margin_bottom = margin_bottom
-        self.margin_right = margin_right
-        self.cell_radius = cell_radius
-        self.title_y = title_y
-        self.header_offset = header_offset
-        self.label_offset = label_offset
-        self.legend_gap = legend_gap
-        self.legend_text_offset = legend_text_offset
-        self.legend_label_width = legend_label_width
-        self.legend_end_margin = legend_end_margin
+    rows: int
+    cols: int = 24
+    cell_size: int = 42
+    cell_gap: int = 7
+    margin_left: int = 180
+    margin_top: int = 110
+    margin_bottom: int = 100
+    margin_right: int = 30
+    cell_radius: int = 5
+    title_y: int = 12
+    header_offset: int = 36
+    label_offset: int = 16
+    legend_gap: int = 10
+    legend_text_offset: int = 6
+    legend_label_width: int = 80
+    legend_end_margin: int = 12
 
     @property
     def step(self):

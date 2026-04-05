@@ -13,6 +13,8 @@ from heatmap import (
     DayGrid,
     HeatmapLayout,
     PALETTE,
+    _value_to_level,
+    _rotated_hours,
     utc_to_jst,
     build_grid,
     compute_level_matrix,
@@ -102,6 +104,63 @@ def _make_daygrid(hour_labels=None, levels=None, raw_values=None):
         raw_values=raw_values,
         hour_labels=hour_labels,
     )
+
+
+# ---------------------------------------------------------------------------
+# テスト: _value_to_level
+# ---------------------------------------------------------------------------
+
+class TestValueToLevel:
+    def test_none_returns_minus_one(self):
+        assert _value_to_level(None, 100) == -1
+
+    def test_zero_value(self):
+        assert _value_to_level(0, 100) == 1
+
+    def test_max_value(self):
+        assert _value_to_level(100, 100) == 4
+
+    def test_mid_value(self):
+        assert _value_to_level(50, 100) == 3
+
+    def test_low_value(self):
+        assert _value_to_level(10, 100) == 1
+
+    def test_max_val_zero_no_crash(self):
+        assert _value_to_level(5, 0) >= 0
+
+    def test_exceeds_max(self):
+        level = _value_to_level(200, 100)
+        assert level == 4  # capped at num_levels - 1
+
+    def test_custom_num_levels(self):
+        assert _value_to_level(100, 100, num_levels=3) == 2
+
+
+# ---------------------------------------------------------------------------
+# テスト: _rotated_hours
+# ---------------------------------------------------------------------------
+
+class TestRotatedHours:
+    def test_basic_rotation(self):
+        hours = _rotated_hours(16)
+        assert hours[0] == 17
+        assert hours[-1] == 16
+        assert len(hours) == 24
+
+    def test_midnight_wrap(self):
+        hours = _rotated_hours(23)
+        assert hours[0] == 0
+        assert hours[-1] == 23
+
+    def test_zero_hour(self):
+        hours = _rotated_hours(0)
+        assert hours[0] == 1
+        assert hours[-1] == 0
+
+    def test_all_hours_present(self):
+        hours = _rotated_hours(12)
+        assert sorted(hours) == list(range(24))
 
 
 # ---------------------------------------------------------------------------
