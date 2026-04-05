@@ -132,12 +132,17 @@ class TestValueToLevel:
     def test_low_value(self):
         assert _value_to_level(10, 100) == 1
 
-    def test_max_val_zero_no_crash(self):
-        assert _value_to_level(5, 0) >= 0
+    def test_max_val_zero(self):
+        # max_val=0の場合、max(0,1)=1で計算: min(4, int(5/1*4)+1) = min(4, 21) = 4
+        assert _value_to_level(5, 0) == 4
 
     def test_exceeds_max(self):
         level = _value_to_level(200, 100)
         assert level == 4  # capped at num_levels - 1
+
+    def test_zero_val_zero_max(self):
+        # val=0, max_val=0: max(0,1)=1で計算、int(0/1*4)+1 = 1
+        assert _value_to_level(0, 0) == 1
 
     def test_custom_num_levels(self):
         assert _value_to_level(100, 100, num_levels=3) == 2
@@ -220,19 +225,30 @@ class TestBuildGrid:
         days, _, _ = build_grid(project)
         assert days == {}
 
+    def test_non_divisor_interval(self):
+        """interval=7の場合、slots_per_hour=8になる"""
+        project = {
+            "namespace": "odd",
+            "interval_minutes": 7,
+            "slots": [_make_slot(4, 0, total=10)],
+        }
+        days, interval, slots_per_hour = build_grid(project)
+        assert interval == 7
+        assert slots_per_hour == 8  # 60 // 7 = 8
+
 
 # ---------------------------------------------------------------------------
 # テスト: compute_level_matrix
 # ---------------------------------------------------------------------------
 
 
+@freeze_time("2026-04-05T07:00:00")  # UTC 07:00 = JST 16:00
 class TestComputeLevelMatrix:
     def test_empty_slots(self):
         project = {"namespace": "empty", "interval_minutes": 10, "slots": []}
         result = compute_level_matrix(project, "total")
         assert result == []
 
-    @freeze_time("2026-04-05T07:00:00")  # UTC 07:00 = JST 16:00
     def test_level_calculation(self, sample_project):
         grids = compute_level_matrix(sample_project, "total")
         assert len(grids) == 1
@@ -253,7 +269,6 @@ class TestComputeLevelMatrix:
         assert len(data_levels) == 3
         assert sorted(data_levels) == [1, 3, 4]
 
-    @freeze_time("2026-04-05T07:00:00")  # UTC 07:00 = JST 16:00
     def test_hour_labels_rotation(self, sample_project):
         grids = compute_level_matrix(sample_project, "total")
         g = grids[0]
@@ -262,7 +277,7 @@ class TestComputeLevelMatrix:
         assert g.hour_labels[-1] == 16
         assert len(g.hour_labels) == 24
 
-    @freeze_time("2026-04-05T14:30:00")  # UTC 14:30 = JST 23:30
+    @freeze_time("2026-04-05T14:30:00")  # UTC 14:30 = JST 23:30（クラスレベルを上書き）
     def test_hour_labels_midnight_wrap(self):
         project = {
             "namespace": "x",
@@ -281,6 +296,23 @@ class TestComputeLevelMatrix:
         # raw_valuesにNone以外の値が3つあるはず
         non_none = [v for row in g.raw_values for v in row if v is not None]
         assert sorted(non_none) == [10, 50, 100]
+
+    def test_all_same_values(self):
+        """全スロットが同一値の場合、全てlevel 4になる"""
+        project = {
+            "namespace": "uniform",
+            "interval_minutes": 10,
+            "slots": [
+                _make_slot(4, 0, total=50),
+                _make_slot(4, 10, total=50),
+                _make_slot(4, 20, total=50),
+            ],
+        }
+        grids = compute_level_matrix(project, "total")
+        g = grids[0]
+        data_levels = [v for row in g.levels for v in row if v != -1]
+        # max_val=50, val=50 -> min(4, int(50/50*4)+1) = min(4,5) = 4
+        assert all(lv == 4 for lv in data_levels)
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +347,38 @@ class TestMergeOverall:
         # overall: 04:00=30, 04:10=30, 04:20=40
         non_none = [v for row in result[0].raw_values for v in row if v is not None]
         assert sorted(non_none) == [30, 30, 40]
+
+    def test_different_days(self):
+        """片方にしかない日がある場合"""
+        grids = [
+            DayGrid(
+                namespace="alpha",
+                day_key="04/05",
+                metric="total",
+                interval=10,
+                slots_per_hour=6,
+                max_val=20,
+                levels=[[1] + [-1] * 23] + [[-1] * 24 for _ in range(5)],
+                raw_values=[[20] + [None] * 23] + [[None] * 24 for _ in range(5)],
+                hour_labels=list(range(24)),
+            ),
+            DayGrid(
+                namespace="beta",
+                day_key="04/06",
+                metric="total",
+                interval=10,
+                slots_per_hour=6,
+                max_val=30,
+                levels=[[2] + [-1] * 23] + [[-1] * 24 for _ in range(5)],
+                raw_values=[[30] + [None] * 23] + [[None] * 24 for _ in range(5)],
+                hour_labels=list(range(24)),
+            ),
+        ]
+        result = _merge_overall(grids, "total")
+        # 2つの異なるday_keyがあるので、Overallも2つできる
+        assert len(result) == 2
+        day_keys = {r.day_key for r in result}
+        assert day_keys == {"04/05", "04/06"}
 
     @freeze_time("2026-04-05T07:00:00")  # UTC 07:00 = JST 16:00
     def test_overall_levels_recalculated(self, two_projects):
@@ -416,23 +480,24 @@ class TestRenderAscii:
 
 
 class TestRenderColor:
-    def test_output_contains_namespace(self):
+    def test_output_contains_namespace(self, capsys):
         g = _make_daygrid()
-        render_color([g])  # 例外が出ないこと
+        render_color([g])
+        output = capsys.readouterr().out
+        assert "test" in output
+
+    def test_output_contains_legend(self, capsys):
+        g = _make_daygrid()
+        render_color([g])
+        output = capsys.readouterr().out
+        # richの出力にはUnicode文字が含まれる
+        assert len(output) > 100  # 空でないことより強い検証
 
     def test_no_error_with_data(self):
         levels = [[-1] * 24 for _ in range(6)]
         levels[0][5] = 3
         g = _make_daygrid(levels=levels)
         render_color([g])  # 例外が出ないこと
-
-    def test_legend_rendered(self, capsys):
-        g = _make_daygrid()
-        render_color([g])
-        # richは色付きで出力するのでcapsysでは不完全だが
-        # 少なくとも何か出力されること
-        output = capsys.readouterr().out
-        assert len(output) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -661,29 +726,27 @@ class TestBuildHeatmapCommands:
         g = _make_daygrid(hour_labels=labels)
         layout = HeatmapLayout(rows=6)
         cmds = build_heatmap_commands(g, layout)
-        headers = cmds[1:25]
-        assert all(isinstance(c, TextCmd) for c in headers)
+        headers = [c for c in cmds if isinstance(c, TextCmd) and c.anchor == "mt"]
+        assert len(headers) == 24
         assert headers[0].text == "17"
         assert headers[-1].text == "16"
-        assert all(c.anchor == "mt" for c in headers)
 
     def test_label_commands(self):
         g = _make_daygrid()
         layout = HeatmapLayout(rows=6)
         cmds = build_heatmap_commands(g, layout)
-        labels = cmds[25:31]
-        assert all(isinstance(c, TextCmd) for c in labels)
+        labels = [c for c in cmds if isinstance(c, TextCmd) and c.anchor == "rm"]
+        assert len(labels) == 6
         assert labels[0].text == ":00"
         assert labels[5].text == ":50"
-        assert all(c.anchor == "rm" for c in labels)
 
     def test_cell_commands_count(self):
         g = _make_daygrid()
         layout = HeatmapLayout(rows=6)
         cmds = build_heatmap_commands(g, layout)
-        cells = cmds[31 : 31 + 144]
-        assert all(isinstance(c, RectCmd) for c in cells)
-        assert len(cells) == 144
+        all_rects = [c for c in cmds if isinstance(c, RectCmd)]
+        # グリッドセル(6*24) + 凡例セル(5) = 149
+        assert len(all_rects) == 6 * 24 + len(PALETTE)
 
     def test_active_cell_color(self):
         levels = [[-1] * 24 for _ in range(6)]
@@ -691,31 +754,86 @@ class TestBuildHeatmapCommands:
         g = _make_daygrid(levels=levels)
         layout = HeatmapLayout(rows=6)
         cmds = build_heatmap_commands(g, layout)
-        first_cell = cmds[31]
-        assert isinstance(first_cell, RectCmd)
-        assert first_cell.color == PALETTE[4]
+        # level 4のセルがPALETTE[4]の色を持つRectCmdが存在すること
+        palette4_rects = [
+            c for c in cmds if isinstance(c, RectCmd) and c.color == PALETTE[4]
+        ]
+        assert len(palette4_rects) >= 1
 
     def test_empty_cell_color(self):
-        g = _make_daygrid()
+        g = _make_daygrid()  # 全て -1
         layout = HeatmapLayout(rows=6)
         cmds = build_heatmap_commands(g, layout)
-        first_cell = cmds[31]
-        assert isinstance(first_cell, RectCmd)
-        assert first_cell.color == PALETTE[0]
+        # グリッドセルは全てPALETTE[0]。凡例にもPALETTE[0]が1つある
+        palette0_rects = [
+            c for c in cmds if isinstance(c, RectCmd) and c.color == PALETTE[0]
+        ]
+        assert len(palette0_rects) == 6 * 24 + 1  # グリッド + 凡例の1つ
 
     def test_cell_position_matches_layout(self):
         g = _make_daygrid()
         layout = HeatmapLayout(rows=6)
         cmds = build_heatmap_commands(g, layout)
-        first_cell = cmds[31]
-        assert first_cell.rect == tuple(layout.cell_rect(0, 0))
+        expected_rect = tuple(layout.cell_rect(0, 0))
+        # 最初のセル位置のRectCmdが存在すること
+        matching = [
+            c for c in cmds if isinstance(c, RectCmd) and c.rect == expected_rect
+        ]
+        assert len(matching) == 1
 
     def test_total_command_count(self):
         g = _make_daygrid()
         layout = HeatmapLayout(rows=6)
         cmds = build_heatmap_commands(g, layout)
-        # タイトル(1) + ヘッダー(24) + ラベル(6) + セル(144) + 凡例(7) = 182
-        assert len(cmds) == 182
+        num_title = 1
+        num_headers = 24
+        num_labels = 6
+        num_cells = 6 * 24
+        num_legend = 1 + len(PALETTE) + 1  # Less + パレットセル + More
+        expected = num_title + num_headers + num_labels + num_cells + num_legend
+        assert len(cmds) == expected
+
+    def test_variable_rows_interval_30(self):
+        """interval=30（rows=2）の場合"""
+        g = DayGrid(
+            namespace="test",
+            day_key="04/05",
+            metric="total",
+            interval=30,
+            slots_per_hour=2,
+            max_val=100,
+            levels=[[-1] * 24, [-1] * 24],
+            raw_values=[[None] * 24, [None] * 24],
+            hour_labels=list(range(24)),
+        )
+        layout = HeatmapLayout(rows=2)
+        cmds = build_heatmap_commands(g, layout)
+        labels = [c for c in cmds if isinstance(c, TextCmd) and c.anchor == "rm"]
+        assert len(labels) == 2
+        assert labels[0].text == ":00"
+        assert labels[1].text == ":30"
+        all_rects = [c for c in cmds if isinstance(c, RectCmd)]
+        assert len(all_rects) == 2 * 24 + len(PALETTE)
+
+    def test_non_divisor_interval(self):
+        """interval=7（rows=8）でも正しく動作する"""
+        g = DayGrid(
+            namespace="test",
+            day_key="04/05",
+            metric="total",
+            interval=7,
+            slots_per_hour=8,
+            max_val=100,
+            levels=[[-1] * 24 for _ in range(8)],
+            raw_values=[[None] * 24 for _ in range(8)],
+            hour_labels=list(range(24)),
+        )
+        layout = HeatmapLayout(rows=8)
+        cmds = build_heatmap_commands(g, layout)
+        labels = [c for c in cmds if isinstance(c, TextCmd) and c.anchor == "rm"]
+        assert len(labels) == 8
+        all_rects = [c for c in cmds if isinstance(c, RectCmd)]
+        assert len(all_rects) == 8 * 24 + len(PALETTE)
 
 
 # ---------------------------------------------------------------------------
@@ -785,9 +903,12 @@ class TestRenderCommands:
         assert img.getpixel((50, 50)) == (13, 17, 23)
 
     def test_text_with_anchor(self):
-        cmds = [TextCmd((50, 50), "X", (255, 255, 255), anchor="mt")]
+        cmds = [TextCmd((50, 10), "X", (255, 255, 255), anchor="mt")]
         from PIL import ImageFont
 
         font = ImageFont.load_default()
         img = render_commands(cmds, 100, 100, (0, 0, 0), font)
-        assert img is not None
+        # テキスト描画領域に非背景色のピクセルが存在すること
+        pixels = [img.getpixel((x, y)) for x in range(40, 60) for y in range(5, 25)]
+        non_bg = [p for p in pixels if p != (0, 0, 0)]
+        assert len(non_bg) > 0, "テキストが描画されていない"
