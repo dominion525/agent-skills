@@ -64,6 +64,7 @@ def parse_args() -> argparse.Namespace:
     mode_group.add_argument(
         "--image", action="store_true", help="iTerm2画像モードで表示"
     )
+    mode_group.add_argument("--output", metavar="FILE", help="画像をファイルに保存")
 
     parser.add_argument(
         "--metric",
@@ -527,6 +528,27 @@ def emit_iterm2_image(
     sys.stdout.flush()
 
 
+def save_image(grids: list[DayGrid], path: str) -> None:
+    """全グリッドの画像を縦に連結してファイルに保存する"""
+    from PIL import Image
+
+    images = [draw_heatmap_image(g) for g in grids]
+    if not images:
+        return
+
+    total_width = max(img.width for img in images)
+    total_height = sum(img.height for img in images)
+    combined = Image.new("RGB", (total_width, total_height), IMG_BG_COLOR)
+
+    y_offset = 0
+    for img in images:
+        combined.paste(img, (0, y_offset))
+        y_offset += img.height
+
+    combined.save(path)
+    print(f"{path} に保存しました ({total_width}x{total_height})")
+
+
 def render_image(grids: list[DayGrid]) -> None:
     """iTerm2画像モードでヒートマップを表示する"""
     try:
@@ -560,7 +582,9 @@ def main() -> None:
 
     grids = prepare_all_grids(data, args.metric)
 
-    if args.image:
+    if args.output:
+        save_image(grids, args.output)
+    elif args.image:
         if not is_iterm2():
             print(
                 "警告: iTerm2が検出されませんでした。"
