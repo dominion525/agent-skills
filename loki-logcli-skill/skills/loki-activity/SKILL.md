@@ -111,3 +111,16 @@ bash ~/.claude/skills/loki-activity/scripts/activity.sh [OPTIONS]
 複数プロジェクトがある場合はプロジェクト別にまとめる。
 
 データが0件の場合は「該当期間にイベントが見つかりませんでした」と報告する。
+
+## ヒートマップ表示
+
+ユーザーが「ヒートマップ」「heatmap」「可視化」等と言った場合、activity.shの出力をヒートマップスクリプトにパイプして表示する。
+
+```bash
+bash ~/.claude/skills/loki-activity/scripts/activity.sh [OPTIONS] | uv run ~/.claude/skills/loki-activity/scripts/heatmap.py [--color]
+```
+
+- デフォルトはASCIIモード（ブロック文字で密度表示）
+- `--color` をつけるとTrueColorモード（GitHubの草風の緑グラデーション）
+- `--metric` で表示メトリクスを変更可能（total, user_prompt, api_request, tool_use）
+- activity.shのオプション（`--all`, `--since`, `--project`）はそのまま使える
