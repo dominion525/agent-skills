@@ -10,7 +10,10 @@ from freezegun import freeze_time
 from heatmap import (
     DayGrid,
     HeatmapLayout,
+    TextCmd,
+    RectCmd,
     PALETTE,
+    IMG_TEXT_COLOR,
     _value_to_level,
     _rotated_hours,
     utc_to_jst,
@@ -18,6 +21,9 @@ from heatmap import (
     compute_level_matrix,
     _merge_overall,
     prepare_all_grids,
+    build_heatmap_commands,
+    _build_legend_commands,
+    render_commands,
     render_ascii,
     render_color,
     draw_heatmap_image,
@@ -598,3 +604,190 @@ class TestIsIterm2:
     def test_no_env_vars(self):
         with patch.dict("os.environ", {}, clear=True):
             assert is_iterm2() is False
+
+
+# ---------------------------------------------------------------------------
+# テスト: DrawCommand型
+# ---------------------------------------------------------------------------
+
+
+class TestDrawCommandTypes:
+    def test_text_cmd_frozen(self):
+        cmd = TextCmd((10, 20), "hello", (255, 255, 255))
+        with pytest.raises(AttributeError):
+            cmd.text = "changed"
+
+    def test_rect_cmd_frozen(self):
+        cmd = RectCmd((0, 0, 10, 10), (0, 0, 0))
+        with pytest.raises(AttributeError):
+            cmd.color = (1, 1, 1)
+
+    def test_text_cmd_default_anchor(self):
+        cmd = TextCmd((0, 0), "x", (0, 0, 0))
+        assert cmd.anchor is None
+
+    def test_rect_cmd_default_radius(self):
+        cmd = RectCmd((0, 0, 10, 10), (0, 0, 0))
+        assert cmd.radius == 0
+
+
+# ---------------------------------------------------------------------------
+# テスト: build_heatmap_commands
+# ---------------------------------------------------------------------------
+
+
+class TestBuildHeatmapCommands:
+    def test_returns_list(self):
+        levels = [[-1] * 24 for _ in range(6)]
+        levels[0][0] = 4
+        g = _make_daygrid(
+            levels=levels, hour_labels=list(range(17, 24)) + list(range(0, 17))
+        )
+        layout = HeatmapLayout(rows=6)
+        cmds = build_heatmap_commands(g, layout)
+        assert isinstance(cmds, list)
+        assert len(cmds) > 0
+
+    def test_first_command_is_title(self):
+        g = _make_daygrid()
+        layout = HeatmapLayout(rows=6)
+        cmds = build_heatmap_commands(g, layout)
+        assert isinstance(cmds[0], TextCmd)
+        assert "test" in cmds[0].text
+        assert "04/05" in cmds[0].text
+
+    def test_header_commands(self):
+        labels = list(range(17, 24)) + list(range(0, 17))
+        g = _make_daygrid(hour_labels=labels)
+        layout = HeatmapLayout(rows=6)
+        cmds = build_heatmap_commands(g, layout)
+        headers = cmds[1:25]
+        assert all(isinstance(c, TextCmd) for c in headers)
+        assert headers[0].text == "17"
+        assert headers[-1].text == "16"
+        assert all(c.anchor == "mt" for c in headers)
+
+    def test_label_commands(self):
+        g = _make_daygrid()
+        layout = HeatmapLayout(rows=6)
+        cmds = build_heatmap_commands(g, layout)
+        labels = cmds[25:31]
+        assert all(isinstance(c, TextCmd) for c in labels)
+        assert labels[0].text == ":00"
+        assert labels[5].text == ":50"
+        assert all(c.anchor == "rm" for c in labels)
+
+    def test_cell_commands_count(self):
+        g = _make_daygrid()
+        layout = HeatmapLayout(rows=6)
+        cmds = build_heatmap_commands(g, layout)
+        cells = cmds[31 : 31 + 144]
+        assert all(isinstance(c, RectCmd) for c in cells)
+        assert len(cells) == 144
+
+    def test_active_cell_color(self):
+        levels = [[-1] * 24 for _ in range(6)]
+        levels[0][0] = 4
+        g = _make_daygrid(levels=levels)
+        layout = HeatmapLayout(rows=6)
+        cmds = build_heatmap_commands(g, layout)
+        first_cell = cmds[31]
+        assert isinstance(first_cell, RectCmd)
+        assert first_cell.color == PALETTE[4]
+
+    def test_empty_cell_color(self):
+        g = _make_daygrid()
+        layout = HeatmapLayout(rows=6)
+        cmds = build_heatmap_commands(g, layout)
+        first_cell = cmds[31]
+        assert isinstance(first_cell, RectCmd)
+        assert first_cell.color == PALETTE[0]
+
+    def test_cell_position_matches_layout(self):
+        g = _make_daygrid()
+        layout = HeatmapLayout(rows=6)
+        cmds = build_heatmap_commands(g, layout)
+        first_cell = cmds[31]
+        assert first_cell.rect == tuple(layout.cell_rect(0, 0))
+
+    def test_total_command_count(self):
+        g = _make_daygrid()
+        layout = HeatmapLayout(rows=6)
+        cmds = build_heatmap_commands(g, layout)
+        # タイトル(1) + ヘッダー(24) + ラベル(6) + セル(144) + 凡例(7) = 182
+        assert len(cmds) == 182
+
+
+# ---------------------------------------------------------------------------
+# テスト: _build_legend_commands
+# ---------------------------------------------------------------------------
+
+
+class TestBuildLegendCommands:
+    def test_legend_structure(self):
+        layout = HeatmapLayout(rows=6)
+        commands: list = []
+        _build_legend_commands(commands, layout, PALETTE, IMG_TEXT_COLOR)
+        assert len(commands) == 7
+
+    def test_legend_starts_with_less(self):
+        layout = HeatmapLayout(rows=6)
+        commands: list = []
+        _build_legend_commands(commands, layout, PALETTE, IMG_TEXT_COLOR)
+        assert isinstance(commands[0], TextCmd)
+        assert commands[0].text == "Less"
+
+    def test_legend_ends_with_more(self):
+        layout = HeatmapLayout(rows=6)
+        commands: list = []
+        _build_legend_commands(commands, layout, PALETTE, IMG_TEXT_COLOR)
+        assert isinstance(commands[-1], TextCmd)
+        assert commands[-1].text == "More"
+
+    def test_legend_palette_colors(self):
+        layout = HeatmapLayout(rows=6)
+        commands: list = []
+        _build_legend_commands(commands, layout, PALETTE, IMG_TEXT_COLOR)
+        color_cmds = [c for c in commands if isinstance(c, RectCmd)]
+        assert len(color_cmds) == len(PALETTE)
+        for cmd, expected_color in zip(color_cmds, PALETTE):
+            assert cmd.color == expected_color
+
+
+# ---------------------------------------------------------------------------
+# テスト: render_commands
+# ---------------------------------------------------------------------------
+
+
+class TestRenderCommands:
+    def test_produces_image(self):
+        cmds = [RectCmd((0, 0, 10, 10), (255, 0, 0), radius=0)]
+        from PIL import ImageFont
+
+        font = ImageFont.load_default()
+        img = render_commands(cmds, 100, 100, (0, 0, 0), font)
+        assert img.size == (100, 100)
+        assert img.mode == "RGB"
+
+    def test_rect_fills_color(self):
+        cmds = [RectCmd((10, 10, 50, 50), (0, 255, 0), radius=0)]
+        from PIL import ImageFont
+
+        font = ImageFont.load_default()
+        img = render_commands(cmds, 100, 100, (0, 0, 0), font)
+        assert img.getpixel((30, 30)) == (0, 255, 0)
+
+    def test_bg_color(self):
+        from PIL import ImageFont
+
+        font = ImageFont.load_default()
+        img = render_commands([], 100, 100, (13, 17, 23), font)
+        assert img.getpixel((50, 50)) == (13, 17, 23)
+
+    def test_text_with_anchor(self):
+        cmds = [TextCmd((50, 50), "X", (255, 255, 255), anchor="mt")]
+        from PIL import ImageFont
+
+        font = ImageFont.load_default()
+        img = render_commands(cmds, 100, 100, (0, 0, 0), font)
+        assert img is not None

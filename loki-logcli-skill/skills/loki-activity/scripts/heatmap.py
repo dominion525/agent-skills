@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
-    from PIL import Image, ImageDraw
+    from PIL import Image
 
 JST = timezone(timedelta(hours=9))
 
@@ -316,6 +316,33 @@ def render_color(grids: list[DayGrid]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 描画命令（宣言的レンダリング）
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TextCmd:
+    """テキスト描画命令"""
+
+    pos: tuple[int, int]
+    text: str
+    color: tuple[int, int, int]
+    anchor: str | None = None
+
+
+@dataclass(frozen=True)
+class RectCmd:
+    """矩形描画命令"""
+
+    rect: tuple[int, int, int, int]
+    color: tuple[int, int, int]
+    radius: int = 0
+
+
+DrawCommand = TextCmd | RectCmd
+
+
+# ---------------------------------------------------------------------------
 # レンダラー: iTerm2画像
 # ---------------------------------------------------------------------------
 
@@ -342,9 +369,6 @@ class HeatmapLayout:
     header_offset: int = 36
     label_offset: int = 16
     legend_gap: int = 10
-    legend_text_offset: int = 6
-    legend_label_width: int = 80
-    legend_end_margin: int = 12
 
     @property
     def step(self) -> int:
@@ -392,21 +416,117 @@ class HeatmapLayout:
         y = self.margin_top + self.rows * self.step + self.legend_gap
         return (x, y)
 
-    def legend_text_pos(self, base_x: int, base_y: int) -> tuple[int, int]:
-        """凡例の「Less」テキスト座標"""
-        return (base_x, base_y + self.legend_text_offset)
 
-    def legend_box_start(self, base_x: int) -> int:
-        """凡例のセル描画開始X座標"""
-        return base_x + self.legend_label_width
+def build_heatmap_commands(
+    g: DayGrid,
+    layout: HeatmapLayout,
+    palette: list[tuple[int, int, int]] = PALETTE,
+    text_color: tuple[int, int, int] = IMG_TEXT_COLOR,
+    title_color: tuple[int, int, int] = (255, 255, 255),
+) -> list[DrawCommand]:
+    """ヒートマップの描画命令リストを生成する。純粋関数。"""
+    commands: list[DrawCommand] = []
 
-    def legend_box_rect(self, box_x: int, base_y: int) -> list[int]:
-        """凡例セルの矩形座標"""
-        return [box_x, base_y, box_x + self.cell_size, base_y + self.cell_size]
+    # タイトル
+    commands.append(
+        TextCmd(
+            layout.title_pos(),
+            f"[ {g.namespace} ] {g.day_key}  metric={g.metric}",
+            title_color,
+        )
+    )
 
-    def legend_end_text_pos(self, box_x: int, base_y: int) -> tuple[int, int]:
-        """凡例の「More」テキスト座標"""
-        return (box_x + self.legend_end_margin, base_y + self.legend_text_offset)
+    # 時間軸ヘッダー
+    for col, h in enumerate(g.hour_labels):
+        commands.append(
+            TextCmd(layout.header_pos(col), str(h), text_color, anchor="mt")
+        )
+
+    # 左ラベル
+    for m_idx in range(layout.rows):
+        minute = m_idx * g.interval
+        commands.append(
+            TextCmd(layout.label_pos(m_idx), f":{minute:02d}", text_color, anchor="rm")
+        )
+
+    # セル
+    for m_idx in range(layout.rows):
+        for col in range(layout.cols):
+            level = g.levels[m_idx][col]
+            color = palette[max(0, level)]
+            commands.append(
+                RectCmd(
+                    tuple(layout.cell_rect(m_idx, col)),
+                    color,
+                    radius=layout.cell_radius,
+                )
+            )
+
+    # 凡例
+    _build_legend_commands(commands, layout, palette, text_color)
+
+    return commands
+
+
+def _build_legend_commands(
+    commands: list[DrawCommand],
+    layout: HeatmapLayout,
+    palette: list[tuple[int, int, int]],
+    text_color: tuple[int, int, int],
+    label_left: str = "Less",
+    label_right: str = "More",
+    label_width: int = 80,
+    end_margin: int = 12,
+    text_offset_y: int = 6,
+) -> None:
+    """凡例の描画命令をcommandsに追加する"""
+    lx, ly = layout.legend_pos()
+
+    commands.append(TextCmd((lx, ly + text_offset_y), label_left, text_color))
+
+    box_x = lx + label_width
+    for color in palette:
+        commands.append(
+            RectCmd(
+                (box_x, ly, box_x + layout.cell_size, ly + layout.cell_size),
+                color,
+                radius=layout.cell_radius,
+            )
+        )
+        box_x += layout.step
+
+    commands.append(
+        TextCmd((box_x + end_margin, ly + text_offset_y), label_right, text_color)
+    )
+
+
+def render_commands(
+    commands: list[DrawCommand],
+    width: int,
+    height: int,
+    bg_color: tuple[int, int, int],
+    font,
+) -> "Image.Image":
+    """描画命令リストからPIL Imageを生成する"""
+    from PIL import Image as PILImage
+    from PIL import ImageDraw
+
+    img = PILImage.new("RGB", (width, height), bg_color)
+    draw = ImageDraw.Draw(img)
+
+    for cmd in commands:
+        if isinstance(cmd, TextCmd):
+            kwargs = {}
+            if cmd.anchor is not None:
+                kwargs["anchor"] = cmd.anchor
+            draw.text(cmd.pos, cmd.text, fill=cmd.color, font=font, **kwargs)
+        elif isinstance(cmd, RectCmd):
+            if cmd.radius > 0:
+                draw.rounded_rectangle(cmd.rect, radius=cmd.radius, fill=cmd.color)
+            else:
+                draw.rectangle(cmd.rect, fill=cmd.color)
+
+    return img
 
 
 def is_iterm2() -> bool:
@@ -435,71 +555,14 @@ def _get_font(size: int):
     return ImageFont.load_default()
 
 
-def _draw_legend(draw: "ImageDraw.Draw", font, layout: HeatmapLayout) -> None:
-    """凡例バーを描画する"""
-    lx, ly = layout.legend_pos()
-    draw.text(layout.legend_text_pos(lx, ly), "Less", fill=IMG_TEXT_COLOR, font=font)
-    box_x = layout.legend_box_start(lx)
-    for color in PALETTE:
-        draw.rounded_rectangle(
-            layout.legend_box_rect(box_x, ly),
-            radius=layout.cell_radius,
-            fill=color,
-        )
-        box_x += layout.step
-    draw.text(
-        layout.legend_end_text_pos(box_x, ly), "More", fill=IMG_TEXT_COLOR, font=font
-    )
-
-
 def draw_heatmap_image(
     g: DayGrid, layout: HeatmapLayout | None = None
 ) -> "Image.Image":
     """単一のDayGridからPIL Imageオブジェクトを生成する"""
-    from PIL import Image, ImageDraw
-
     layout = layout or HeatmapLayout(rows=g.slots_per_hour)
-
-    img = Image.new("RGB", (layout.width, layout.height), IMG_BG_COLOR)
-    draw = ImageDraw.Draw(img)
+    commands = build_heatmap_commands(g, layout)
     font = _get_font(IMG_FONT_SIZE)
-
-    # タイトル
-    title = f"[ {g.namespace} ] {g.day_key}  metric={g.metric}"
-    draw.text(layout.title_pos(), title, fill=(255, 255, 255), font=font)
-
-    # 時間軸ヘッダー
-    for col, h in enumerate(g.hour_labels):
-        draw.text(
-            layout.header_pos(col), str(h), fill=IMG_TEXT_COLOR, font=font, anchor="mt"
-        )
-
-    # 左ラベル
-    for m_idx in range(layout.rows):
-        minute = m_idx * g.interval
-        draw.text(
-            layout.label_pos(m_idx),
-            f":{minute:02d}",
-            fill=IMG_TEXT_COLOR,
-            font=font,
-            anchor="rm",
-        )
-
-    # セル描画
-    for m_idx in range(layout.rows):
-        for col in range(layout.cols):
-            level = g.levels[m_idx][col]
-            color = PALETTE[max(0, level)]
-            draw.rounded_rectangle(
-                layout.cell_rect(m_idx, col),
-                radius=layout.cell_radius,
-                fill=color,
-            )
-
-    # 凡例
-    _draw_legend(draw, font, layout)
-
-    return img
+    return render_commands(commands, layout.width, layout.height, IMG_BG_COLOR, font)
 
 
 def emit_iterm2_image(
