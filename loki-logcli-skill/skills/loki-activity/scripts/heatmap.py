@@ -36,8 +36,9 @@ class DayGrid(NamedTuple):
     interval: int
     slots_per_hour: int
     max_val: int
-    levels: list[list[int]]              # [m_idx][h] = 0..4, データなしは -1
-    raw_values: list[list[int | None]]   # [m_idx][h] = 元の数値 or None
+    levels: list[list[int]]              # [m_idx][col] = 0..4, データなしは -1
+    raw_values: list[list[int | None]]   # [m_idx][col] = 元の数値 or None
+    hour_labels: list[int]               # 各列の時間ラベル（0-23）
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +94,8 @@ def build_grid(project):
 
 
 def compute_level_matrix(project, metric, num_levels=5):
-    """プロジェクトのスロットデータからレベル行列を計算する"""
+    """プロジェクトのスロットデータからレベル行列を計算する。
+    横軸は現在時刻が右端に来るようにローテーションされる。"""
     slots = project["slots"]
     if not slots:
         return []
@@ -103,6 +105,12 @@ def compute_level_matrix(project, metric, num_levels=5):
     max_val = max(values) if values else 1
 
     days, interval, slots_per_hour = build_grid(project)
+
+    # 現在時刻の次の時間を起点にして、24時間分をローテーション
+    now_jst = datetime.now(JST)
+    start_hour = (now_jst.hour + 1) % 24
+    hour_order = [(start_hour + i) % 24 for i in range(24)]
+
     result = []
 
     for day_key, hour_map in days.items():
@@ -111,7 +119,7 @@ def compute_level_matrix(project, metric, num_levels=5):
         for m_idx in range(slots_per_hour):
             level_row = []
             raw_row = []
-            for h in range(24):
+            for h in hour_order:
                 slot_index = h * slots_per_hour + m_idx
                 slot = hour_map.get(slot_index)
                 if slot is None:
@@ -129,6 +137,7 @@ def compute_level_matrix(project, metric, num_levels=5):
             namespace=ns, day_key=day_key, metric=metric,
             interval=interval, slots_per_hour=slots_per_hour,
             max_val=max_val, levels=levels, raw_values=raw_values,
+            hour_labels=hour_order,
         ))
 
     return result
@@ -153,15 +162,15 @@ def render_ascii(grids):
         print(f"\n[ {g.namespace} ] {g.day_key} metric={g.metric}")
 
         print("       ", end="")
-        for h in range(24):
+        for h in g.hour_labels:
             print(f"{h:>3}", end="")
         print()
 
         for m_idx in range(g.slots_per_hour):
             minute = m_idx * g.interval
             print(f"  :{minute:02d}  ", end="")
-            for h in range(24):
-                level = g.levels[m_idx][h]
+            for col in range(24):
+                level = g.levels[m_idx][col]
                 if level == -1:
                     print("  .", end="")
                 else:
@@ -185,15 +194,15 @@ def render_color(grids):
         console.print(f"\n[bold][ {g.namespace} ][/bold] {g.day_key}  metric={g.metric}")
 
         header = Text("       ")
-        for h in range(24):
+        for h in g.hour_labels:
             header.append(f"{h:>3}", style="dim")
         console.print(header)
 
         for m_idx in range(g.slots_per_hour):
             minute = m_idx * g.interval
             line = Text(f"  :{minute:02d}  ")
-            for h in range(24):
-                level = g.levels[m_idx][h]
+            for col in range(24):
+                level = g.levels[m_idx][col]
                 idx = max(0, level)
                 r, gc, b = PALETTE[idx]
                 line.append(" \u2588\u2588", style=f"rgb({r},{gc},{b})")  # ██
@@ -284,8 +293,8 @@ def draw_heatmap_image(g):
     draw.text((IMG_MARGIN_LEFT, 12), title, fill=(255, 255, 255), font=font)
 
     # 時間軸ヘッダー
-    for h in range(24):
-        x = IMG_MARGIN_LEFT + h * step + IMG_CELL_SIZE // 2
+    for col, h in enumerate(g.hour_labels):
+        x = IMG_MARGIN_LEFT + col * step + IMG_CELL_SIZE // 2
         draw.text((x, IMG_MARGIN_TOP - 36), str(h), fill=IMG_TEXT_COLOR, font=font, anchor="mt")
 
     # 左ラベル
@@ -296,10 +305,10 @@ def draw_heatmap_image(g):
 
     # セル描画
     for m_idx in range(rows):
-        for h in range(24):
-            x = IMG_MARGIN_LEFT + h * step
+        for col in range(24):
+            x = IMG_MARGIN_LEFT + col * step
             y = IMG_MARGIN_TOP + m_idx * step
-            level = g.levels[m_idx][h]
+            level = g.levels[m_idx][col]
             color = PALETTE[max(0, level)]
             draw.rounded_rectangle(
                 [x, y, x + IMG_CELL_SIZE, y + IMG_CELL_SIZE],
