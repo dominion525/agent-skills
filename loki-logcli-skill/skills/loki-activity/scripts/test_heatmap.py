@@ -11,13 +11,8 @@ from freezegun import freeze_time
 
 from heatmap import (
     DayGrid,
+    HeatmapLayout,
     PALETTE,
-    IMG_CELL_SIZE,
-    IMG_CELL_GAP,
-    IMG_MARGIN_LEFT,
-    IMG_MARGIN_TOP,
-    IMG_MARGIN_BOTTOM,
-    IMG_MARGIN_RIGHT,
     utc_to_jst,
     build_grid,
     compute_level_matrix,
@@ -369,14 +364,72 @@ class TestRenderColor:
 # テスト: draw_heatmap_image
 # ---------------------------------------------------------------------------
 
+class TestHeatmapLayout:
+    def test_step(self):
+        layout = HeatmapLayout(rows=6)
+        assert layout.step == layout.cell_size + layout.cell_gap
+
+    def test_width_height(self):
+        layout = HeatmapLayout(rows=6)
+        assert layout.width == layout.margin_left + 24 * layout.step + layout.margin_right
+        assert layout.height == layout.margin_top + 6 * layout.step + layout.margin_bottom
+
+    def test_cell_rect(self):
+        layout = HeatmapLayout(rows=6)
+        rect = layout.cell_rect(0, 0)
+        assert rect == [layout.margin_left, layout.margin_top,
+                        layout.margin_left + layout.cell_size, layout.margin_top + layout.cell_size]
+
+    def test_cell_rect_offset(self):
+        layout = HeatmapLayout(rows=6)
+        rect = layout.cell_rect(2, 3)
+        x = layout.margin_left + 3 * layout.step
+        y = layout.margin_top + 2 * layout.step
+        assert rect == [x, y, x + layout.cell_size, y + layout.cell_size]
+
+    def test_cell_center(self):
+        layout = HeatmapLayout(rows=6)
+        cx, cy = layout.cell_center(0, 0)
+        assert cx == layout.margin_left + layout.cell_size // 2
+        assert cy == layout.margin_top + layout.cell_size // 2
+
+    def test_title_pos(self):
+        layout = HeatmapLayout(rows=6)
+        assert layout.title_pos() == (layout.margin_left, layout.title_y)
+
+    def test_header_pos(self):
+        layout = HeatmapLayout(rows=6)
+        x, y = layout.header_pos(5)
+        assert x == layout.margin_left + 5 * layout.step + layout.cell_size // 2
+        assert y == layout.margin_top - layout.header_offset
+
+    def test_label_pos(self):
+        layout = HeatmapLayout(rows=6)
+        x, y = layout.label_pos(3)
+        assert x == layout.margin_left - layout.label_offset
+        assert y == layout.margin_top + 3 * layout.step + layout.cell_size // 2
+
+    def test_legend_pos(self):
+        layout = HeatmapLayout(rows=6)
+        lx, ly = layout.legend_pos()
+        assert lx == layout.margin_left
+        assert ly == layout.margin_top + 6 * layout.step + layout.legend_gap
+
+    def test_custom_parameters(self):
+        layout = HeatmapLayout(rows=4, cell_size=20, cell_gap=4, margin_left=50, margin_top=30)
+        assert layout.step == 24
+        assert layout.width == 50 + 24 * 24 + layout.margin_right
+        cx, cy = layout.cell_center(1, 2)
+        assert cx == 50 + 2 * 24 + 10
+        assert cy == 30 + 1 * 24 + 10
+
+
 class TestDrawHeatmapImage:
     def test_image_size(self):
         g = _make_daygrid()
-        img = draw_heatmap_image(g)
-        step = IMG_CELL_SIZE + IMG_CELL_GAP
-        expected_width = IMG_MARGIN_LEFT + 24 * step + IMG_MARGIN_RIGHT
-        expected_height = IMG_MARGIN_TOP + 6 * step + IMG_MARGIN_BOTTOM
-        assert img.size == (expected_width, expected_height)
+        layout = HeatmapLayout(rows=g.slots_per_hour)
+        img = draw_heatmap_image(g, layout=layout)
+        assert img.size == (layout.width, layout.height)
 
     def test_image_mode(self):
         g = _make_daygrid()
@@ -384,24 +437,20 @@ class TestDrawHeatmapImage:
         assert img.mode == "RGB"
 
     def test_empty_cell_is_background_color(self):
-        g = _make_daygrid()  # 全て -1
-        img = draw_heatmap_image(g)
-        step = IMG_CELL_SIZE + IMG_CELL_GAP
-        # セル(0,0)の中心ピクセルを確認
-        cx = IMG_MARGIN_LEFT + IMG_CELL_SIZE // 2
-        cy = IMG_MARGIN_TOP + IMG_CELL_SIZE // 2
+        g = _make_daygrid()
+        layout = HeatmapLayout(rows=g.slots_per_hour)
+        img = draw_heatmap_image(g, layout=layout)
+        cx, cy = layout.cell_center(0, 0)
         pixel = img.getpixel((cx, cy))
         assert pixel == PALETTE[0]
 
     def test_active_cell_has_correct_color(self):
         levels = [[-1] * 24 for _ in range(6)]
-        levels[0][0] = 4  # 最高レベル、左上セル
+        levels[0][0] = 4
         g = _make_daygrid(levels=levels)
-        img = draw_heatmap_image(g)
-        step = IMG_CELL_SIZE + IMG_CELL_GAP
-        # セル(row=0, col=0)の中心ピクセル
-        cx = IMG_MARGIN_LEFT + IMG_CELL_SIZE // 2
-        cy = IMG_MARGIN_TOP + IMG_CELL_SIZE // 2
+        layout = HeatmapLayout(rows=g.slots_per_hour)
+        img = draw_heatmap_image(g, layout=layout)
+        cx, cy = layout.cell_center(0, 0)
         pixel = img.getpixel((cx, cy))
         assert pixel == PALETTE[4]
 
@@ -410,15 +459,10 @@ class TestDrawHeatmapImage:
         levels[0][0] = 1
         levels[0][1] = 4
         g = _make_daygrid(levels=levels)
-        img = draw_heatmap_image(g)
-        step = IMG_CELL_SIZE + IMG_CELL_GAP
-        # col=0 のセル中心
-        cx0 = IMG_MARGIN_LEFT + IMG_CELL_SIZE // 2
-        cy = IMG_MARGIN_TOP + IMG_CELL_SIZE // 2
-        # col=1 のセル中心
-        cx1 = IMG_MARGIN_LEFT + step + IMG_CELL_SIZE // 2
-        p0 = img.getpixel((cx0, cy))
-        p1 = img.getpixel((cx1, cy))
+        layout = HeatmapLayout(rows=g.slots_per_hour)
+        img = draw_heatmap_image(g, layout=layout)
+        p0 = img.getpixel(layout.cell_center(0, 0))
+        p1 = img.getpixel(layout.cell_center(0, 1))
         assert p0 == PALETTE[1]
         assert p1 == PALETTE[4]
         assert p0 != p1

@@ -278,16 +278,99 @@ def render_color(grids):
 # レンダラー: iTerm2画像
 # ---------------------------------------------------------------------------
 
-# 画像レンダリング定数
-IMG_CELL_SIZE = 42
-IMG_CELL_GAP = 7
-IMG_MARGIN_LEFT = 180
-IMG_MARGIN_TOP = 110
-IMG_MARGIN_BOTTOM = 100
-IMG_MARGIN_RIGHT = 30
+# スタイル設定（レイアウトに属さない色・フォント）
 IMG_BG_COLOR = (13, 17, 23)
 IMG_TEXT_COLOR = (139, 148, 158)
 IMG_FONT_SIZE = 32
+
+
+class HeatmapLayout:
+    """ヒートマップ画像のレイアウト計算を担うモデル"""
+
+    def __init__(self, rows, cols=24, cell_size=42, cell_gap=7,
+                 margin_left=180, margin_top=110, margin_bottom=100,
+                 margin_right=30, cell_radius=5,
+                 title_y=12, header_offset=36, label_offset=16,
+                 legend_gap=10, legend_text_offset=6,
+                 legend_label_width=80, legend_end_margin=12):
+        self.rows = rows
+        self.cols = cols
+        self.cell_size = cell_size
+        self.cell_gap = cell_gap
+        self.margin_left = margin_left
+        self.margin_top = margin_top
+        self.margin_bottom = margin_bottom
+        self.margin_right = margin_right
+        self.cell_radius = cell_radius
+        self.title_y = title_y
+        self.header_offset = header_offset
+        self.label_offset = label_offset
+        self.legend_gap = legend_gap
+        self.legend_text_offset = legend_text_offset
+        self.legend_label_width = legend_label_width
+        self.legend_end_margin = legend_end_margin
+
+    @property
+    def step(self):
+        return self.cell_size + self.cell_gap
+
+    @property
+    def width(self):
+        return self.margin_left + self.cols * self.step + self.margin_right
+
+    @property
+    def height(self):
+        return self.margin_top + self.rows * self.step + self.margin_bottom
+
+    def cell_rect(self, row, col):
+        """セル(row, col)の矩形座標 [x0, y0, x1, y1]"""
+        x = self.margin_left + col * self.step
+        y = self.margin_top + row * self.step
+        return [x, y, x + self.cell_size, y + self.cell_size]
+
+    def cell_center(self, row, col):
+        """セル(row, col)の中心座標 (cx, cy)"""
+        x = self.margin_left + col * self.step + self.cell_size // 2
+        y = self.margin_top + row * self.step + self.cell_size // 2
+        return (x, y)
+
+    def title_pos(self):
+        """タイトルテキストの座標"""
+        return (self.margin_left, self.title_y)
+
+    def header_pos(self, col):
+        """時間軸ヘッダーのテキスト座標（anchor="mt"用）"""
+        x = self.margin_left + col * self.step + self.cell_size // 2
+        y = self.margin_top - self.header_offset
+        return (x, y)
+
+    def label_pos(self, row):
+        """左ラベルのテキスト座標（anchor="rm"用）"""
+        x = self.margin_left - self.label_offset
+        y = self.margin_top + row * self.step + self.cell_size // 2
+        return (x, y)
+
+    def legend_pos(self):
+        """凡例バーの基準座標 (x, y)"""
+        x = self.margin_left
+        y = self.margin_top + self.rows * self.step + self.legend_gap
+        return (x, y)
+
+    def legend_text_pos(self, base_x, base_y):
+        """凡例の「Less」テキスト座標"""
+        return (base_x, base_y + self.legend_text_offset)
+
+    def legend_box_start(self, base_x):
+        """凡例のセル描画開始X座標"""
+        return base_x + self.legend_label_width
+
+    def legend_box_rect(self, box_x, base_y):
+        """凡例セルの矩形座標"""
+        return [box_x, base_y, box_x + self.cell_size, base_y + self.cell_size]
+
+    def legend_end_text_pos(self, box_x, base_y):
+        """凡例の「More」テキスト座標"""
+        return (box_x + self.legend_end_margin, base_y + self.legend_text_offset)
 
 
 def is_iterm2():
@@ -316,63 +399,55 @@ def _get_font(size):
     return ImageFont.load_default()
 
 
-def _draw_legend(draw, font, x, y):
+def _draw_legend(draw, font, layout):
     """凡例バーを描画する"""
-    draw.text((x, y + 6), "Less", fill=IMG_TEXT_COLOR, font=font)
-    box_x = x + 80
+    lx, ly = layout.legend_pos()
+    draw.text(layout.legend_text_pos(lx, ly), "Less", fill=IMG_TEXT_COLOR, font=font)
+    box_x = layout.legend_box_start(lx)
     for color in PALETTE:
         draw.rounded_rectangle(
-            [box_x, y, box_x + IMG_CELL_SIZE, y + IMG_CELL_SIZE],
-            radius=5, fill=color,
+            layout.legend_box_rect(box_x, ly),
+            radius=layout.cell_radius, fill=color,
         )
-        box_x += IMG_CELL_SIZE + IMG_CELL_GAP
-    draw.text((box_x + 12, y + 6), "More", fill=IMG_TEXT_COLOR, font=font)
+        box_x += layout.step
+    draw.text(layout.legend_end_text_pos(box_x, ly), "More", fill=IMG_TEXT_COLOR, font=font)
 
 
-def draw_heatmap_image(g):
+def draw_heatmap_image(g, layout=None):
     """単一のDayGridからPIL Imageオブジェクトを生成する"""
     from PIL import Image, ImageDraw
 
-    cols = 24
-    rows = g.slots_per_hour
-    step = IMG_CELL_SIZE + IMG_CELL_GAP
+    layout = layout or HeatmapLayout(rows=g.slots_per_hour)
 
-    width = IMG_MARGIN_LEFT + cols * step + IMG_MARGIN_RIGHT
-    height = IMG_MARGIN_TOP + rows * step + IMG_MARGIN_BOTTOM
-
-    img = Image.new("RGB", (width, height), IMG_BG_COLOR)
+    img = Image.new("RGB", (layout.width, layout.height), IMG_BG_COLOR)
     draw = ImageDraw.Draw(img)
     font = _get_font(IMG_FONT_SIZE)
 
     # タイトル
     title = f"[ {g.namespace} ] {g.day_key}  metric={g.metric}"
-    draw.text((IMG_MARGIN_LEFT, 12), title, fill=(255, 255, 255), font=font)
+    draw.text(layout.title_pos(), title, fill=(255, 255, 255), font=font)
 
     # 時間軸ヘッダー
     for col, h in enumerate(g.hour_labels):
-        x = IMG_MARGIN_LEFT + col * step + IMG_CELL_SIZE // 2
-        draw.text((x, IMG_MARGIN_TOP - 36), str(h), fill=IMG_TEXT_COLOR, font=font, anchor="mt")
+        draw.text(layout.header_pos(col), str(h), fill=IMG_TEXT_COLOR, font=font, anchor="mt")
 
     # 左ラベル
-    for m_idx in range(rows):
+    for m_idx in range(layout.rows):
         minute = m_idx * g.interval
-        y = IMG_MARGIN_TOP + m_idx * step + IMG_CELL_SIZE // 2
-        draw.text((IMG_MARGIN_LEFT - 16, y), f":{minute:02d}", fill=IMG_TEXT_COLOR, font=font, anchor="rm")
+        draw.text(layout.label_pos(m_idx), f":{minute:02d}", fill=IMG_TEXT_COLOR, font=font, anchor="rm")
 
     # セル描画
-    for m_idx in range(rows):
-        for col in range(24):
-            x = IMG_MARGIN_LEFT + col * step
-            y = IMG_MARGIN_TOP + m_idx * step
+    for m_idx in range(layout.rows):
+        for col in range(layout.cols):
             level = g.levels[m_idx][col]
             color = PALETTE[max(0, level)]
             draw.rounded_rectangle(
-                [x, y, x + IMG_CELL_SIZE, y + IMG_CELL_SIZE],
-                radius=5, fill=color,
+                layout.cell_rect(m_idx, col),
+                radius=layout.cell_radius, fill=color,
             )
 
     # 凡例
-    _draw_legend(draw, font, IMG_MARGIN_LEFT, IMG_MARGIN_TOP + rows * step + 10)
+    _draw_legend(draw, font, layout)
 
     return img
 
