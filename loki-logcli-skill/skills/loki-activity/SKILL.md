@@ -54,7 +54,7 @@ bash ~/.claude/skills/loki-activity/scripts/activity.sh [OPTIONS]
 - `--project NAME` — プロジェクトフィルタ（service_namespace部分一致）
 - `--all` — 全プロジェクトを対象にする（デフォルトのカレントリポジトリ自動フィルタを無効化）
 - `--detail` — 全イベント一覧を出力する（デフォルトはサマリー）
-- `--interval N` — サマリーの区切り分数（デフォルト: 10）
+- `--interval N` — サマリーの区切り分数（デフォルト: 10、60の約数を推奨: 5, 10, 15, 20, 30）
 
 `--project` も `--all` も指定しない場合、カレントリポジトリ名で自動的にフィルタされる。
 
