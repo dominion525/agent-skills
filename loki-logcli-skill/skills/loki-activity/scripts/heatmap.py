@@ -424,9 +424,17 @@ def build_heatmap_commands(
     palette: list[tuple[int, int, int]] = PALETTE,
     text_color: tuple[int, int, int] = IMG_TEXT_COLOR,
     title_color: tuple[int, int, int] = (255, 255, 255),
+    now: datetime | None = None,
 ) -> list[DrawCommand]:
     """ヒートマップの描画命令リストを生成する。純粋関数。"""
+    now = now or datetime.now(JST)
     commands: list[DrawCommand] = []
+
+    # 未来スロット判定の準備
+    today_key = now.strftime("%m/%d")
+    is_today = g.day_key == today_key
+    last_col = layout.cols - 1
+    now_minute_slot = now.minute // g.interval
 
     # タイトル
     commands.append(
@@ -450,9 +458,11 @@ def build_heatmap_commands(
             TextCmd(layout.label_pos(m_idx), f":{minute:02d}", text_color, anchor="rm")
         )
 
-    # セル
+    # セル（未来のスロットはスキップ）
     for m_idx in range(layout.rows):
         for col in range(layout.cols):
+            if is_today and col == last_col and m_idx > now_minute_slot:
+                continue
             level = g.levels[m_idx][col]
             color = palette[max(0, level)]
             commands.append(

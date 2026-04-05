@@ -1,6 +1,6 @@
 """heatmap.py のテスト"""
 
-from datetime import timezone, timedelta
+from datetime import datetime, timezone, timedelta
 from io import StringIO
 from unittest.mock import patch
 
@@ -743,7 +743,9 @@ class TestBuildHeatmapCommands:
     def test_cell_commands_count(self):
         g = _make_daygrid()
         layout = HeatmapLayout(rows=6)
-        cmds = build_heatmap_commands(g, layout)
+        # nowを04/05 23:59に固定して全スロット描画
+        now = datetime(2026, 4, 5, 23, 59, tzinfo=JST)
+        cmds = build_heatmap_commands(g, layout, now=now)
         all_rects = [c for c in cmds if isinstance(c, RectCmd)]
         # グリッドセル(6*24) + 凡例セル(5) = 149
         assert len(all_rects) == 6 * 24 + len(PALETTE)
@@ -763,7 +765,8 @@ class TestBuildHeatmapCommands:
     def test_empty_cell_color(self):
         g = _make_daygrid()  # 全て -1
         layout = HeatmapLayout(rows=6)
-        cmds = build_heatmap_commands(g, layout)
+        now = datetime(2026, 4, 5, 23, 59, tzinfo=JST)
+        cmds = build_heatmap_commands(g, layout, now=now)
         # グリッドセルは全てPALETTE[0]。凡例にもPALETTE[0]が1つある
         palette0_rects = [
             c for c in cmds if isinstance(c, RectCmd) and c.color == PALETTE[0]
@@ -784,7 +787,8 @@ class TestBuildHeatmapCommands:
     def test_total_command_count(self):
         g = _make_daygrid()
         layout = HeatmapLayout(rows=6)
-        cmds = build_heatmap_commands(g, layout)
+        now = datetime(2026, 4, 5, 23, 59, tzinfo=JST)
+        cmds = build_heatmap_commands(g, layout, now=now)
         num_title = 1
         num_headers = 24
         num_labels = 6
@@ -829,11 +833,33 @@ class TestBuildHeatmapCommands:
             hour_labels=list(range(24)),
         )
         layout = HeatmapLayout(rows=8)
-        cmds = build_heatmap_commands(g, layout)
+        now = datetime(2026, 4, 5, 23, 59, tzinfo=JST)
+        cmds = build_heatmap_commands(g, layout, now=now)
         labels = [c for c in cmds if isinstance(c, TextCmd) and c.anchor == "rm"]
         assert len(labels) == 8
         all_rects = [c for c in cmds if isinstance(c, RectCmd)]
         assert len(all_rects) == 8 * 24 + len(PALETTE)
+
+    def test_future_slots_hidden(self):
+        """未来のスロットはセルが描画されない"""
+        g = _make_daygrid()  # day_key="04/05", interval=10
+        layout = HeatmapLayout(rows=6)
+        # 04/05 22:25 → 最終列の :30, :40, :50 はスキップ
+        now = datetime(2026, 4, 5, 22, 25, tzinfo=JST)
+        cmds = build_heatmap_commands(g, layout, now=now)
+        all_rects = [c for c in cmds if isinstance(c, RectCmd)]
+        # 通常 6*24=144 だが、最終列の3スロットがスキップ → 141 + 凡例5 = 146
+        assert len(all_rects) == (6 * 24 - 3) + len(PALETTE)
+
+    def test_past_day_shows_all_slots(self):
+        """過去の日付では全スロットが描画される"""
+        g = _make_daygrid()  # day_key="04/05"
+        layout = HeatmapLayout(rows=6)
+        # nowを04/06にすると、04/05は過去なので全スロット描画
+        now = datetime(2026, 4, 6, 10, 0, tzinfo=JST)
+        cmds = build_heatmap_commands(g, layout, now=now)
+        all_rects = [c for c in cmds if isinstance(c, RectCmd)]
+        assert len(all_rects) == 6 * 24 + len(PALETTE)
 
 
 # ---------------------------------------------------------------------------
