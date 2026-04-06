@@ -297,6 +297,25 @@ class TestComputeLevelMatrix:
         non_none = [v for row in g.raw_values for v in row if v is not None]
         assert sorted(non_none) == [10, 50, 100]
 
+    def test_cross_day_data_merged_into_one(self):
+        """日をまたいだスロットが1つのDayGridにまとまる"""
+        project = {
+            "namespace": "cross-day",
+            "interval_minutes": 10,
+            "slots": [
+                # UTC 15:00 = JST 翌0:00（日またぎ）
+                _make_slot(15, 0, total=20),
+                # UTC 04:00 = JST 13:00（同日）
+                _make_slot(4, 0, total=30),
+            ],
+        }
+        grids = compute_level_matrix(project, "total")
+        # 日をまたいでも1つのDayGridにまとまること
+        assert len(grids) == 1
+        g = grids[0]
+        non_none = [v for row in g.raw_values for v in row if v is not None]
+        assert sorted(non_none) == [20, 30]
+
     def test_all_same_values(self):
         """全スロットが同一値の場合、全てlevel 4になる"""
         project = {

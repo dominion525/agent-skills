@@ -128,53 +128,67 @@ def compute_level_matrix(
     project: dict, metric: str, num_levels: int = 5
 ) -> list[DayGrid]:
     """プロジェクトのスロットデータからレベル行列を計算する。
-    横軸は現在時刻が右端に来るようにローテーションされる。"""
+    横軸は現在時刻が右端に来るようにローテーションされる。
+    日をまたいだデータも1つのDayGridに統合する。"""
     slots = project["slots"]
     if not slots:
         return []
 
     ns = project["namespace"]
-    max_val = max((s[metric] for s in slots), default=1)
-
     days, interval, slots_per_hour = build_grid(project)
     hour_order = _rotated_hours(datetime.now(JST).hour)
 
-    result = []
+    # 全日のスロットを1つのhour_mapに統合（同じslot_indexは値を合算）
+    merged_map: dict[int, dict] = {}
+    for hour_map in days.values():
+        for slot_index, slot in hour_map.items():
+            if slot_index in merged_map:
+                existing = merged_map[slot_index]
+                merged_map[slot_index] = {
+                    k: existing.get(k, 0) + slot.get(k, 0)
+                    for k in slot
+                    if k != "time_utc"
+                }
+                merged_map[slot_index]["time_utc"] = slot["time_utc"]
+            else:
+                merged_map[slot_index] = dict(slot)
 
-    for day_key, hour_map in days.items():
-        levels = []
-        raw_values = []
-        for m_idx in range(slots_per_hour):
-            level_row = []
-            raw_row = []
-            for h in hour_order:
-                slot_index = h * slots_per_hour + m_idx
-                slot = hour_map.get(slot_index)
-                if slot is None:
-                    level_row.append(-1)
-                    raw_row.append(None)
-                else:
-                    val = slot[metric]
-                    level_row.append(_value_to_level(val, max_val, num_levels))
-                    raw_row.append(val)
-            levels.append(level_row)
-            raw_values.append(raw_row)
+    # max_valを統合後のデータで再計算
+    max_val = max((s[metric] for s in merged_map.values()), default=1)
 
-        result.append(
-            DayGrid(
-                namespace=ns,
-                day_key=day_key,
-                metric=metric,
-                interval=interval,
-                slots_per_hour=slots_per_hour,
-                max_val=max_val,
-                levels=levels,
-                raw_values=raw_values,
-                hour_labels=hour_order,
-            )
+    # 1つのDayGridを生成
+    today_key = datetime.now(JST).strftime("%m/%d")
+    levels = []
+    raw_values = []
+    for m_idx in range(slots_per_hour):
+        level_row = []
+        raw_row = []
+        for h in hour_order:
+            slot_index = h * slots_per_hour + m_idx
+            slot = merged_map.get(slot_index)
+            if slot is None:
+                level_row.append(-1)
+                raw_row.append(None)
+            else:
+                val = slot[metric]
+                level_row.append(_value_to_level(val, max_val, num_levels))
+                raw_row.append(val)
+        levels.append(level_row)
+        raw_values.append(raw_row)
+
+    return [
+        DayGrid(
+            namespace=ns,
+            day_key=today_key,
+            metric=metric,
+            interval=interval,
+            slots_per_hour=slots_per_hour,
+            max_val=max_val,
+            levels=levels,
+            raw_values=raw_values,
+            hour_labels=hour_order,
         )
-
-    return result
+    ]
 
 
 def _merge_overall(grids: list[DayGrid], metric: str) -> list[DayGrid]:
