@@ -14,7 +14,9 @@ skills/loki-activity/
   scripts/
     activity.sh             logcliクエリのラッパー（サマリー/ディテール出力）
     heatmap.py              ヒートマップ表示（ASCII/TrueColor/iTerm2画像/ファイル保存）
-    test_heatmap.py         pytestテスト（58テスト）
+    test_activity.sh        activity.shのテスト
+    test_heatmap.py         heatmap.pyのテスト
+    fixtures/               テスト用フィクスチャデータ
 ```
 
 ## 前提条件
@@ -51,6 +53,9 @@ bash scripts/activity.sh --all | uv run scripts/heatmap.py --color
 # iTerm2画像表示
 bash scripts/activity.sh --all | uv run scripts/heatmap.py --image
 
+# Overallのみ（全プロジェクト合算）
+bash scripts/activity.sh --all | uv run scripts/heatmap.py --overall
+
 # 画像ファイル保存
 bash scripts/activity.sh --all | uv run scripts/heatmap.py --output heatmap.png
 ```
@@ -59,7 +64,12 @@ bash scripts/activity.sh --all | uv run scripts/heatmap.py --output heatmap.png
 
 ```bash
 cd skills/loki-activity/scripts
+
+# heatmap.pyのテスト
 uv run --with pytest --with freezegun --with rich --with Pillow pytest test_heatmap.py -v
+
+# activity.shのテスト
+bash test_activity.sh
 ```
 
 ## インストール
