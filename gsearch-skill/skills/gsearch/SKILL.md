@@ -1,6 +1,7 @@
 ---
 name: gsearch
 description: Use when the user explicitly asks to search Google or look something up on Google (e.g. says "Googleで調べて" / "Googleで検索して"). Runs a Gemini google_search grounded search: Gemini forms its own search queries, searches Google, and returns a grounded answer with the queries it used and source URLs. Invoke on request — not as an automatic replacement for the built-in WebSearch. Reuses GEMINI_API_KEY; no extra key, no MCP.
+allowed-tools: Bash
 ---
 
 # gsearch — Gemini(google_search) で web 検索
