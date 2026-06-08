@@ -1,6 +1,7 @@
 ---
 name: goose
 description: Delegate a self-contained, agentic task to Google Gemini via the Goose CLI, run headlessly from Claude Code. Goose autonomously explores the repo, reads files, runs read-only shell, and reports back — a different model family for second opinions, cross-model review, or offloading exploratory analysis. Use alongside Codex. Not for destructive/write tasks unless explicitly intended.
+allowed-tools: Bash
 ---
 
 # goose — Gemini に agentic タスクを委譲する
@@ -11,7 +12,7 @@ Block の Goose エージェントを headless で起動し、頭脳を Google G
 
 - `goose` CLI 導入済み（`brew install block-goose-cli`）。
 - `goose configure` でプロバイダ設定済み: Google Gemini / API キーは macOS Keychain / モデル `gemini-3.5-flash`。**このスキルはキーを保持しない**。
-- 確認: `goose info` で provider が google。
+- 確認: `~/.config/goose/config.yaml` の `active_provider`（または `goose run` 実行時の起動バナー）で provider/model を確認する。`goose info` はパスや Version しか出さず provider/model は表示されないので注意。
 
 ## 呼び出し
 
