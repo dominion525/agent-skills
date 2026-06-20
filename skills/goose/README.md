@@ -1,4 +1,4 @@
-# goose-skill
+# goose
 
 Claude Code から Google Gemini（Block の Goose CLI 経由）に agentic タスクを委譲するための薄い skill。
 
