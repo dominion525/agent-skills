@@ -21,12 +21,6 @@
       "skills": ["./skills/goose"]
     },
     {
-      "name": "blog-writing",
-      "source": "./",
-      "description": "はてなブログの記事執筆を支援する",
-      "skills": ["./skills/blog-writing"]
-    },
-    {
       "name": "loki-activity",
       "source": "./",
       "description": "Grafana Loki から Claude Code の作業時間を集計する",
