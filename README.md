@@ -17,7 +17,7 @@ Claude Code Plugin Marketplace 経由:
 
 ```
 /plugin marketplace add dominion525/agent-skills
-/plugin install gsearch@agent-skills   # gsearch / goose / blog-writing / loki-activity
+/plugin install gsearch@dominion525-skills   # gsearch / goose / blog-writing / loki-activity
 ```
 
 Vercel skills CLI 経由:
