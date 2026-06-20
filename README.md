@@ -1,11 +1,29 @@
-# sandbox
-なんか雑な実験とかするやつ
+# agent-skills
 
-## 構造
-個別にリポジトリを作るほどではないミニプロジェクトを、サブディレクトリとしてまとめている。
+Claude Code 向けの Skill 集。
+
+## 収録 Skill
+
+- `skills/gsearch/` — Gemini の google_search でグラウンディングされた Google 検索を返す
+- `skills/goose/` — Goose CLI 経由で Gemini に自走タスクを委譲する
+- `skills/blog-writing/` — はてなブログの記事執筆を支援する
+- `skills/loki-activity/` — Grafana Loki から Claude Code の作業時間を集計する
+
+各 Skill の詳細は配下の `SKILL.md` を参照。
+
+## インストール
+
+Claude Code Plugin Marketplace 経由:
 
 ```
-sandbox/
-├── loki-logcli-skill/    # Loki logcli用のClaude Codeスキル
-└── ...
+/plugin marketplace add dominion525/agent-skills
+/plugin install <skill-name>@agent-skills
 ```
+
+Vercel skills CLI 経由:
+
+```
+npx skills add dominion525/agent-skills --skill <skill-name> -a claude-code
+```
+
+手動で配置する場合は `skills/<name>/` を `~/.claude/skills/<name>/` に symlink するか配置する。

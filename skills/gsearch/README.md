@@ -1,4 +1,4 @@
-# gsearch-skill
+# gsearch
 
 Claude Code から Gemini API の Google Search グラウンディング（`google_search`）で web 検索する薄い skill。
 内蔵 WebSearch の代替で、質問を Gemini が咀嚼して検索クエリを組み、根拠付き回答＋ソースを返す。

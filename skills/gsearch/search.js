@@ -4,7 +4,7 @@
 // env: GEMINI_API_KEY (必須), GEMINI_MODEL (任意, 既定 gemini-3.5-flash)
 // キーは保持せず env から読むだけ。Node 18+ 必須（global fetch / AbortSignal.timeout）。
 
-const REQUEST_TIMEOUT_MS = 20000; // メイン API
+const REQUEST_TIMEOUT_MS = 60000; // メイン API
 const RESOLVE_TIMEOUT_MS = 5000; //  redirect 解決の HEAD
 const MAX_SOURCES = 8;
 

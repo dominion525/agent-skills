@@ -1,4 +1,4 @@
-# loki-logcli-skill
+# loki-activity
 
 Claude Codeの作業時間をGrafana Loki/logcliから取得・集計・可視化するClaude Codeスキル。
 
