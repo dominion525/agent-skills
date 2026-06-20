@@ -31,6 +31,12 @@
       "source": "./",
       "description": "Grafana Loki から Claude Code の作業時間を集計する",
       "skills": ["./skills/loki-activity"]
+    },
+    {
+      "name": "jetdb-cli",
+      "source": "./",
+      "description": "Microsoft Access (.mdb/.accdb) データベースの読み取り専用 CLI スキル",
+      "skills": ["./skills/jetdb-cli"]
     }
   ]
 }

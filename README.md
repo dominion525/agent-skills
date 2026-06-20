@@ -8,6 +8,7 @@ Claude Code 向けの Skill 集。
 - `skills/goose/` — Goose CLI 経由で Gemini に自走タスクを委譲する
 - `skills/blog-writing/` — はてなブログの記事執筆を支援する
 - `skills/loki-activity/` — Grafana Loki から Claude Code の作業時間を集計する
+- `skills/jetdb-cli/` — Microsoft Access (.mdb/.accdb) データベースの読み取り専用 CLI
 
 各 Skill の詳細は配下の `SKILL.md` を参照。
 
@@ -17,7 +18,7 @@ Claude Code Plugin Marketplace 経由:
 
 ```
 /plugin marketplace add dominion525/agent-skills
-/plugin install gsearch@dominion525-skills   # gsearch / goose / blog-writing / loki-activity
+/plugin install gsearch@dominion525-skills   # gsearch / goose / blog-writing / loki-activity / jetdb-cli
 ```
 
 Vercel skills CLI 経由:
