@@ -1,10 +1,11 @@
 ---
 name: loki-activity
 description: >
-  Claude Codeの作業時間をGrafana Loki/logcliから取得して集計する。
-  OTELテレメトリデータからプロジェクト別の作業ブロックと合計時間を算出する。
-  「今日の作業時間」「今週の稼働」「プロジェクト別の作業サマリー」等を
-  問い合わせたいときに使用する。
+  Retrieves, aggregates, and visualizes Claude Code OTEL telemetry stored in
+  Grafana Loki to produce per-project work blocks and totals.
+  Use when the user asks for time spent today, this week, a project-by-project
+  activity summary, or a heatmap visualization
+  (e.g. says "今日の作業時間" / "今週の稼働" / "プロジェクト別の作業サマリー" / "ヒートマップ").
 allowed-tools: Bash, Read
 ---
 
@@ -15,9 +16,16 @@ Grafana Lokiに蓄積されたClaude CodeのOTELテレメトリから、
 
 ## 前提条件
 
-- `logcli` がインストール済み
+- `logcli`、`jq`、`git` がインストール済み（`activity.sh` 起動時に必須チェック）
 - 環境変数 `LOKI_ADDR`, `LOKI_USERNAME`, `LOKI_PASSWORD` が設定済み
-- `jq` がインストール済み
+- ヒートマップ表示を使う場合のみ: `uv` および Python 3.10+ がインストール済み（PEP 723 で rich / Pillow を自動インストール）
+
+## 動作ルール
+
+- **Loki 側の必須ラベル**: `service_name="claude-code"`、`service_namespace`、`event_name`、`event_timestamp`。これらが Claude Code の OTEL テレメトリとして揃っている前提で動く。
+- **現在時刻の確認**: 「今日」「今週」「過去 N 日」のような相対時間指定を解釈する前に、必ず `date` コマンドで現在の UTC / JST を確認する。AI のシステムプロンプト上の時刻と実行ホストの時刻にズレがあると、フィルタ範囲を取り違える。
+- **引数の優先順位**: `--all` を指定した場合、`--project` および自動フィルタ（カレントリポジトリ名）は無効になる。
+- **予約語との衝突**: `all` / `week` / `month` はそれぞれ「全プロジェクト」「過去 7 日」「過去 30 日」として解釈される。同名のプロジェクトを指したい場合は `--project all` 等を明示する。
 
 ## 引数の処理
 
@@ -40,7 +48,7 @@ Grafana Lokiに蓄積されたClaude CodeのOTELテレメトリから、
 `week` と `month` はそれぞれ 168h、720h のエイリアス。
 文字列は `service_namespace` の部分一致フィルタとして扱う。
 `all` を指定すると全プロジェクトを対象にする。
-デフォルトではカレントリポジトリ名（`git rev-parse --show-toplevel` のbasename）で自動フィルタする。
+デフォルトではカレントリポジトリ名（`git rev-parse --show-toplevel` のbasename）で自動フィルタする。Git 管理外のディレクトリで実行された場合はフィルタが空になり、結果として全プロジェクトを対象にする（`--all` を指定した場合と同等）。
 
 ## スクリプト呼び出し
 
@@ -124,4 +132,14 @@ bash ~/.claude/skills/loki-activity/scripts/activity.sh [OPTIONS] | uv run ~/.cl
 - デフォルトはASCIIモード（ブロック文字で密度表示）
 - `--color` をつけるとTrueColorモード（GitHubの草風の緑グラデーション）
 - `--metric` で表示メトリクスを変更可能（total, user_prompt, api_request, tool_use）
+- `--image` で iTerm2 インライン画像、`--output FILE` で PNG ファイル保存、`--overall` で全プロジェクト合算のみ表示（複数プロジェクトが対象のときに有効）
+- 期間が複数日に渡っても、日付別ではなく**同時刻帯を日跨ぎで合算して 24 時間 1 グリッド**にする（曜日 × 時刻のマトリクスにはならない）
 - activity.shのオプション（`--all`, `--since`, `--project`）はそのまま使える
+- `--detail` は heatmap.py にパイプできない（detail 出力は events 構造、heatmap.py は slots 構造を要求するため）
+
+## エラー時の挙動
+
+- **`logcli` 実行失敗**: activity.sh は exit 1 で終了し、stderr に `エラー: logcli の実行に失敗しました (exit code: N)` を出力する。認証情報（環境変数）の不足、Loki 接続不可、クエリ構文エラー等が主な原因。
+- **依存コマンドなし**: `logcli`, `jq`, `git` のいずれかが PATH になければ exit 1 で `エラー: ... が見つかりません` を出して終了する。
+- **対象期間にデータなし**: スクリプト自体は exit 0 で正常終了し、`projects: []`（空配列）の JSON を返す。「該当期間にイベントが見つかりませんでした」と報告する。
+- **Git 管理外で実行**: 自動フィルタが効かず全プロジェクトを対象にする（`--all` と同等）。エラーにはならない。
