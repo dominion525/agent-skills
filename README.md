@@ -17,13 +17,11 @@ Claude Code Plugin Marketplace 経由:
 
 ```
 /plugin marketplace add dominion525/agent-skills
-/plugin install <skill-name>@agent-skills
+/plugin install gsearch@agent-skills   # gsearch / goose / blog-writing / loki-activity
 ```
 
 Vercel skills CLI 経由:
 
 ```
-npx skills add dominion525/agent-skills --skill <skill-name> -a claude-code
+npx skills add dominion525/agent-skills --skill gsearch -a claude-code
 ```
-
-手動で配置する場合は `skills/<name>/` を `~/.claude/skills/<name>/` に symlink するか配置する。

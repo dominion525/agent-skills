@@ -72,10 +72,3 @@ uv run --with pytest --with freezegun --with rich --with Pillow pytest test_heat
 bash test_activity.sh
 ```
 
-## インストール
-
-グローバルスキルとしてシンボリックリンクを張る:
-
-```bash
-ln -s $(pwd)/skills/loki-activity ~/.claude/skills/loki-activity
-```

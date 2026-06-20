@@ -3,12 +3,6 @@
 Claude Code から Gemini API の Google Search グラウンディング（`google_search`）で web 検索する薄い skill。
 内蔵 WebSearch の代替で、質問を Gemini が咀嚼して検索クエリを組み、根拠付き回答＋ソースを返す。
 
-- 実体: `skills/gsearch/`（`SKILL.md` ＋ `search.js`）
-- 有効化: `~/.claude/skills/gsearch` をこの `skills/gsearch` への symlink にする
-  ```bash
-  ln -s "$PWD/skills/gsearch" ~/.claude/skills/gsearch
-  ```
-
 ## 前提
 
 - node v18+（fetch 内蔵）

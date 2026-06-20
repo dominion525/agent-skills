@@ -2,12 +2,6 @@
 
 Claude Code から Google Gemini（Block の Goose CLI 経由）に agentic タスクを委譲するための薄い skill。
 
-- 実体: `skills/goose/SKILL.md`
-- 利用: `~/.claude/skills/goose` をこの `skills/goose` への symlink にして有効化
-  ```bash
-  ln -s "$PWD/skills/goose" ~/.claude/skills/goose
-  ```
-
 ## 前提
 
 - `goose` CLI 導入（`brew install block-goose-cli`）
