@@ -1,18 +1,24 @@
 ---
 name: goose
-description: Delegate a self-contained, agentic task to Google Gemini via the Goose CLI, run headlessly from Claude Code. Goose autonomously explores the repo, reads files, runs read-only shell, and reports back — a different model family for second opinions, cross-model review, or offloading exploratory analysis. Use alongside Codex. Not for destructive/write tasks unless explicitly intended.
+description: >
+  Delegates a self-contained agentic task to Google Gemini via the Block Goose CLI,
+  run headlessly from Claude Code. Goose can autonomously explore the repository,
+  read files, and execute shell commands across multiple turns to produce a result
+  rather than a single-shot answer. Use when offloading exploratory analysis to a
+  different model family, getting a second opinion on a diff or design, or running
+  a multi-step task that needs tool use beyond what a single prompt can return.
 allowed-tools: Bash
 ---
 
 # goose — Gemini に agentic タスクを委譲する
 
-Block の Goose エージェントを headless で起動し、頭脳を Google Gemini にして走らせる。Claude Code から「別系統のモデルに自己完結タスクを丸投げ」して、単発回答ではなく**ツールを使う自律的な結果**を受け取るための薄いラッパー。Codex(OpenAI) と併用する「2台目の委譲先」。
+Block の Goose CLI を Google Gemini で headless 駆動し、Claude Code から別系統モデルに自己完結タスクを丸投げするための薄いラッパー。Goose 自身がファイルを読み、コマンドを実行しながら、複数ターンの自走で結果を返す。Codex (OpenAI) と並ぶ「もう一つの委譲先」として使う。
 
 ## 前提
 
-- `goose` CLI 導入済み（`brew install block-goose-cli`）。
-- `goose configure` でプロバイダ設定済み: Google Gemini / API キーは macOS Keychain / モデル `gemini-3.5-flash`。**このスキルはキーを保持しない**。
-- 確認: `~/.config/goose/config.yaml` の `active_provider`（または `goose run` 実行時の起動バナー）で provider/model を確認する。`goose info` はパスや Version しか出さず provider/model は表示されないので注意。
+- `goose` CLI 導入済み (`brew install block-goose-cli`)。
+- `goose configure` で Google Gemini をプロバイダ設定済み。API キーは macOS Keychain に格納される（**このスキルはキーを保持しない**）。
+- 動作中の provider / model を確認したいときは `~/.config/goose/config.yaml` の `active_provider` を見るか、`goose run` の起動バナーを読む。`goose info` は provider / model を出さないので使わない。
 
 ## 呼び出し
 
@@ -24,21 +30,20 @@ goose run --no-session --max-turns 20 -t "<自己完結したタスク>"
 
 - `--no-session`: セッションファイルを作らない自動実行向け。
 - `--max-turns N`: 自律ループの上限（暴走防止）。10〜25 が目安。
-- provider/model は goose config（Google Gemini / gemini-3.5-flash）を使うので、ここでは指定不要。
+- provider / model は `goose configure` で設定済みのものをそのまま使うため、呼び出し時の指定は不要。
 - 出力（思考・ツール呼び出し・最終回答）は stdout に出る。`tail` 等で切らずに全文を扱う。
 
-別モデルを使いたい1回だけは `GOOSE_MODEL` で上書きできる（その時点でアカウントが使えるモデルに限る）:
+別モデルで一度だけ上書きしたいときは `GOOSE_MODEL` を使う（指定モデルが当該プロバイダで利用可能であること）:
 
 ```bash
-GOOSE_MODEL=<別のgeminiモデル> goose run --no-session --max-turns 25 -t "<タスク>"
+GOOSE_MODEL=<別のモデル名> goose run --no-session --max-turns 25 -t "<タスク>"
 ```
 
 ## 挙動と注意
 
-- Goose は**本物のエージェント**: ファイルを読み、shell を実行できる（developer 拡張）。リポジトリを走査してレポートできる。
-- 読み取り目的なら、タスク文を「分析・レビュー・レポート」と表現し、ファイル変更を頼まない。
-- 書き込み/shell 権限を持って動くため、破壊的タスクを安易に委譲しない。
-- 巨大 repo は時間・トークンを食う。対象を絞って依頼する。
+- Goose は developer 拡張経由でファイル読み取りと shell 実行ができる自律エージェント。リポジトリを走査してレポートを返せる。
+- 書き込みや破壊的 shell 実行も技術的には可能で、`--no-session` や上記の呼び出しオプションでは権限制限されない。読み取り目的のタスクは「分析・レビュー・レポート」と明示し、書き換えや破壊操作を依頼しない。
+- 巨大なリポジトリでは探索に時間とトークンを消費するため、対象ファイル・ディレクトリを絞って依頼する。
 
 ## 向いている用途
 
