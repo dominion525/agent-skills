@@ -4,13 +4,26 @@ Claude Code 向けの Skill 集。
 
 ## 収録 Skill
 
-- `skills/gsearch/` — gsearch: Gemini の google_search でグラウンディングされた Google 検索を返す
-- `goose-skill/` — goose: Goose CLI 経由で Gemini に自走タスクを委譲する
-- `blog-writing-skill/` — blog-writing: はてなブログの記事執筆を支援する
-- `loki-logcli-skill/` — loki-activity: Grafana Loki から Claude Code の作業時間を集計する
+- `skills/gsearch/` — Gemini の google_search でグラウンディングされた Google 検索を返す
+- `skills/goose/` — Goose CLI 経由で Gemini に自走タスクを委譲する
+- `skills/blog-writing/` — はてなブログの記事執筆を支援する
+- `skills/loki-activity/` — Grafana Loki から Claude Code の作業時間を集計する
 
-各 Skill の詳細は配下の `README.md` および `skills/<name>/SKILL.md` を参照。
+各 Skill の詳細は配下の `SKILL.md` を参照。
 
 ## インストール
 
-各 Skill ディレクトリ配下の `skills/<name>/` を Claude Code のスキル置き場（例: `~/.claude/skills/<name>/`）に配置すると有効になる。
+Claude Code Plugin Marketplace 経由:
+
+```
+/plugin marketplace add dominion525/agent-skills
+/plugin install <skill-name>@agent-skills
+```
+
+Vercel skills CLI 経由:
+
+```
+npx skills add dominion525/agent-skills --skill <skill-name> -a claude-code
+```
+
+手動で配置する場合は `skills/<name>/` を `~/.claude/skills/<name>/` に symlink するか配置する。

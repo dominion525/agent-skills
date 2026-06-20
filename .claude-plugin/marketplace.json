@@ -13,6 +13,24 @@
       "source": "./",
       "description": "Gemini google_search でグラウンディングされた Google 検索を返す",
       "skills": ["./skills/gsearch"]
+    },
+    {
+      "name": "goose",
+      "source": "./",
+      "description": "Goose CLI 経由で Gemini に自走タスクを委譲する",
+      "skills": ["./skills/goose"]
+    },
+    {
+      "name": "blog-writing",
+      "source": "./",
+      "description": "はてなブログの記事執筆を支援する",
+      "skills": ["./skills/blog-writing"]
+    },
+    {
+      "name": "loki-activity",
+      "source": "./",
+      "description": "Grafana Loki から Claude Code の作業時間を集計する",
+      "skills": ["./skills/loki-activity"]
     }
   ]
 }
