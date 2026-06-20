@@ -37,6 +37,12 @@
       "source": "./",
       "description": "Microsoft Access (.mdb/.accdb) データベースの読み取り専用 CLI スキル",
       "skills": ["./skills/jetdb-cli"]
+    },
+    {
+      "name": "tgltrk",
+      "source": "./",
+      "description": "Toggl Track の時間計測を CLI から操作する",
+      "skills": ["./skills/tgltrk"]
     }
   ]
 }
