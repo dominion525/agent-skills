@@ -1,27 +1,29 @@
+[日本語](README.ja.md) | **English**
+
 # agent-skills
 
-Claude Code 向けの Skill 集。
+A collection of Skills for Claude Code.
 
-## 収録 Skill
+## Included Skills
 
-- `skills/gsearch/` — Gemini の google_search でグラウンディングされた Google 検索を返す
-- `skills/goose/` — Goose CLI 経由で Gemini に自走タスクを委譲する
-- `skills/loki-activity/` — Grafana Loki から Claude Code の作業時間を集計する
-- `skills/jetdb-cli/` — Microsoft Access (.mdb/.accdb) データベースの読み取り専用 CLI
-- `skills/tgltrk/` — Toggl Track の時間計測を CLI から操作する
+- `skills/gsearch/` — Returns grounded Google search results via Gemini's `google_search`
+- `skills/goose/` — Delegates self-contained agentic tasks to Gemini via the Goose CLI
+- `skills/loki-activity/` — Aggregates Claude Code activity from Grafana Loki
+- `skills/jetdb-cli/` — Read-only CLI for Microsoft Access (.mdb/.accdb) databases
+- `skills/tgltrk/` — Operates Toggl Track time tracking from the CLI
 
-各 Skill の詳細は配下の `SKILL.md` を参照。
+See each `SKILL.md` for details.
 
-## インストール
+## Installation
 
-Claude Code Plugin Marketplace 経由:
+Via Claude Code Plugin Marketplace:
 
 ```
 /plugin marketplace add dominion525/agent-skills
 /plugin install gsearch@dominion525-skills   # gsearch / goose / loki-activity / jetdb-cli / tgltrk
 ```
 
-Vercel skills CLI 経由:
+Via Vercel skills CLI:
 
 ```
 npx skills add dominion525/agent-skills --skill gsearch -a claude-code
