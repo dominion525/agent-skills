@@ -1,0 +1,46 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  gsearch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: run gsearch tests
+        run: node --test test_search.js
+        working-directory: skills/gsearch
+
+  loki-activity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install logcli
+        run: |
+          curl -fsSL -o /tmp/logcli.zip https://github.com/grafana/loki/releases/latest/download/logcli-linux-amd64.zip
+          unzip /tmp/logcli.zip -d /tmp/
+          sudo mv /tmp/logcli-linux-amd64 /usr/local/bin/logcli
+          logcli --version || true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: install uv
+        run: pip install uv
+
+      - name: run activity.sh tests
+        run: bash test_activity.sh
+        working-directory: skills/loki-activity/scripts
+
+      - name: run heatmap.py tests
+        run: uv run --with pytest --with freezegun --with rich --with Pillow pytest test_heatmap.py -v
+        working-directory: skills/loki-activity/scripts
