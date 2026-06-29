@@ -39,7 +39,7 @@ gsearch "<質問>" gemini-2.5-flash
 - 質問は自然文でよい。検索キーワードは Gemini が咀嚼して自動で組む。
 - 既定モデルは経路ごとに分けている。AI Studio 経路は `gemini-3.5-flash`、Vertex AI 経路は `gemini-2.5-flash`（Vertex AI 側に `gemini-3.5-flash` が存在しないため）。両方とも `GEMINI_MODEL` env または第 2 引数で上書きできる。
 - 出力は stdout（回答 → Gemini が使った検索クエリ → ソースURL）。`tail` で切らず全文を扱う。
-- 所要 ~15〜20秒（grounding のため）。タイムアウトは 60 秒に設定済み。Vertex AI 経路では追加で access token 取得 (約 1〜2 秒) が入る。
+- 所要 ~15〜20秒（grounding のため）。タイムアウトは 120 秒に設定済み。Vertex AI 経路では追加で access token 取得 (約 1〜2 秒) が入る。
 
 ## 挙動
 - Gemini API の google_search グラウンディングを**単発で1回**呼ぶ（ループしない）。
