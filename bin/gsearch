@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# gsearch — plugin install 経由で PATH に乗る薄い launcher
+# Claude Code は <plugin-root>/bin を PATH 先頭に追加するので、
+# このスクリプトと同居している ../skills/gsearch/search.js を呼び出すだけ。
+# symlink 経由で起動された場合にも実体ディレクトリを解決する。
+set -euo pipefail
+
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  case "$src" in
+    /*) ;;
+    *) src="$dir/$src" ;;
+  esac
+done
+dir="$(cd -P "$(dirname "$src")" && pwd)"
+
+exec node "$dir/../skills/gsearch/search.js" "$@"

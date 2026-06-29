@@ -24,14 +24,20 @@ allowed-tools: Bash
 - 両方ある場合は AI Studio が優先される。両方未設定だとエラー終了する。
 
 ## 使い方
-このディレクトリ同梱の `search.js` を実行する:
+plugin install 経由なら `gsearch` コマンドが PATH に乗る:
 
 ```bash
-node "$HOME/.claude/skills/gsearch/search.js" "<検索したい質問(自然文でよい)>"
+gsearch "<検索したい質問(自然文でよい)>"
+```
+
+任意でモデルを第 2 引数に渡せる:
+
+```bash
+gsearch "<質問>" gemini-2.5-flash
 ```
 
 - 質問は自然文でよい。検索キーワードは Gemini が咀嚼して自動で組む。
-- モデル既定 `gemini-3.5-flash`。変えるなら第2引数か環境変数 `GEMINI_MODEL`。Vertex AI 経路ではモデル名が AI Studio と異なる場合があるので、その場合は `GEMINI_MODEL` で上書きする。
+- 既定モデルは経路ごとに分けている。AI Studio 経路は `gemini-3.5-flash`、Vertex AI 経路は `gemini-2.5-flash`（Vertex AI 側に `gemini-3.5-flash` が存在しないため）。両方とも `GEMINI_MODEL` env または第 2 引数で上書きできる。
 - 出力は stdout（回答 → Gemini が使った検索クエリ → ソースURL）。`tail` で切らず全文を扱う。
 - 所要 ~15〜20秒（grounding のため）。タイムアウトは 60 秒に設定済み。Vertex AI 経路では追加で access token 取得 (約 1〜2 秒) が入る。
 
