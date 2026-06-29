@@ -15,14 +15,25 @@ AI Studio キーでも Vertex AI のサービスアカウントでも動く。en
 
 ## 使い方
 
-### AI Studio 経路
+### Claude Code に plugin install した状態（推奨）
+
+`<plugin-root>/bin` が PATH に乗るので `gsearch` コマンドが直接叩ける:
+
+```bash
+export GEMINI_API_KEY=<AI Studio キー>      # または GOOGLE_APPLICATION_CREDENTIALS=...
+gsearch "<質問(自然文)>" [model]
+```
+
+### リポジトリをそのまま clone した場合（ローカル開発）
+
+`node` で `search.js` を直接呼ぶ:
 
 ```bash
 export GEMINI_API_KEY=<AI Studio キー>
 node skills/gsearch/search.js "<質問(自然文)>" [model]
 ```
 
-### Vertex AI 経路
+Vertex AI 経路の場合:
 
 ```bash
 unset GEMINI_API_KEY
@@ -31,9 +42,14 @@ export GEMINI_LOCATION=us-central1   # 任意 (既定 us-central1)
 node skills/gsearch/search.js "<質問(自然文)>" [model]
 ```
 
-- `PROJECT_ID` は SA キー JSON の `project_id` から取得する
-- 既定モデルは `gemini-3.5-flash`。Vertex AI 側で同名が通らない場合は `GEMINI_MODEL` で上書きする
-  例: `GEMINI_MODEL=gemini-2.5-flash node skills/gsearch/search.js "..."`
+### モデル
+
+- 既定モデルは経路ごとに分かれている。AI Studio 経路は `gemini-3.5-flash`、Vertex AI 経路は `gemini-2.5-flash`（Vertex AI 側に `gemini-3.5-flash` が存在しないため）
+- 第 2 引数または `GEMINI_MODEL` env で上書きできる
+
+```bash
+GEMINI_MODEL=gemini-2.5-flash gsearch "..."
+```
 
 ## 出力
 

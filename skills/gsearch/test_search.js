@@ -465,3 +465,102 @@ test("runMain: 両 env 未設定なら GsearchError(1)", async () => {
       /GOOGLE_APPLICATION_CREDENTIALS/.test(e.message),
   );
 });
+
+// ============================================================================
+// 10. 既定モデルの経路別分岐
+// ============================================================================
+
+test("DEFAULT_MODELS: AI Studio は gemini-3.5-flash、Vertex AI は gemini-2.5-flash", () => {
+  assert.strictEqual(mod.DEFAULT_MODELS.aistudio, "gemini-3.5-flash");
+  assert.strictEqual(mod.DEFAULT_MODELS.vertex, "gemini-2.5-flash");
+});
+
+test("runMain: GEMINI_MODEL 未指定なら AI Studio 経路は DEFAULT_MODELS.aistudio を使う", async () => {
+  const stub = makeFetchStub(() =>
+    fetchResponse({ json: { candidates: [{ content: { parts: [{ text: "x" }] } }] } }),
+  );
+  await mod.runMain({
+    argv: ["node", "search.js", "q"],
+    env: { GEMINI_API_KEY: "K" },
+    log: () => {},
+    opts: { fetch: stub },
+  });
+  assert.match(
+    stub.records[0].url,
+    new RegExp(`/models/${mod.DEFAULT_MODELS.aistudio}:generateContent$`),
+  );
+});
+
+test("runMain: GEMINI_MODEL 未指定なら Vertex AI 経路は DEFAULT_MODELS.vertex を使う", async () => {
+  const { pem } = genTestRsa();
+  const sa = { client_email: "x@example", private_key: pem, project_id: "P" };
+  await withTmpFile(JSON.stringify(sa), async (tmp) => {
+    const stub = makeFetchStub((url) => {
+      if (url.includes("oauth2.googleapis.com")) return fetchResponse({ json: { access_token: "T" } });
+      return fetchResponse({ json: { candidates: [{ content: { parts: [{ text: "v" }] } }] } });
+    });
+    await mod.runMain({
+      argv: ["node", "search.js", "q"],
+      env: { GOOGLE_APPLICATION_CREDENTIALS: tmp },
+      log: () => {},
+      opts: { fetch: stub },
+    });
+    assert.match(
+      stub.records[1].url,
+      new RegExp(`/models/${mod.DEFAULT_MODELS.vertex}:generateContent$`),
+    );
+  });
+});
+
+test("runMain: GEMINI_MODEL を指定すれば両経路で env が優先される", async () => {
+  const stub = makeFetchStub(() =>
+    fetchResponse({ json: { candidates: [{ content: { parts: [{ text: "x" }] } }] } }),
+  );
+  await mod.runMain({
+    argv: ["node", "search.js", "q"],
+    env: { GEMINI_API_KEY: "K", GEMINI_MODEL: "custom-from-env" },
+    log: () => {},
+    opts: { fetch: stub },
+  });
+  assert.match(stub.records[0].url, /\/models\/custom-from-env:generateContent$/);
+});
+
+test("runMain: argv[3] が最優先 (GEMINI_MODEL も DEFAULT_MODELS も上書きする)", async () => {
+  const stub = makeFetchStub(() =>
+    fetchResponse({ json: { candidates: [{ content: { parts: [{ text: "x" }] } }] } }),
+  );
+  await mod.runMain({
+    argv: ["node", "search.js", "q", "from-argv"],
+    env: { GEMINI_API_KEY: "K", GEMINI_MODEL: "from-env" },
+    log: () => {},
+    opts: { fetch: stub },
+  });
+  assert.match(stub.records[0].url, /\/models\/from-argv:generateContent$/);
+});
+
+// ============================================================================
+// 11. bin/gsearch launcher (リポジトリ直叩き)
+// ============================================================================
+
+test("bin/gsearch: 引数なしでも search.js と同じ usage を出して exit 1", () => {
+  const launcher = path.join(__dirname, "..", "..", "bin", "gsearch");
+  if (!fs.existsSync(launcher)) {
+    // リポジトリ外で実行されたら skip 相当（テスト失敗にしない）
+    return;
+  }
+  let status, stderr;
+  try {
+    execFileSync(launcher, [], {
+      env: { ...process.env, GEMINI_API_KEY: "dummy" },
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    status = 0;
+    stderr = "";
+  } catch (e) {
+    status = e.status;
+    stderr = e.stderr || "";
+  }
+  assert.strictEqual(status, 1);
+  assert.match(stderr, /usage/);
+});

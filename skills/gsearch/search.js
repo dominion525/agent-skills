@@ -24,6 +24,14 @@ const OAUTH_TIMEOUT_MS = 15000; //   OAuth2 token 取得
 const RESOLVE_TIMEOUT_MS = 5000; //   redirect 解決の HEAD
 const MAX_SOURCES = 8;
 
+// 経路ごとの既定モデル。GEMINI_MODEL env と argv[3] はどちらも上書きする。
+// Vertex AI 側は AI Studio とラインナップがずれていて gemini-3.5-flash は 404。
+// 将来 Vertex AI 側で同名が公開されたらここを 1 行差し替えれば追従できる。
+const DEFAULT_MODELS = {
+  aistudio: "gemini-3.5-flash",
+  vertex: "gemini-2.5-flash",
+};
+
 // CLI 用の構造化エラー。throw で die() の代わりに使い、最上位で exit code を取り出す。
 class GsearchError extends Error {
   constructor(msg, exitCode = 1) {
@@ -239,7 +247,7 @@ async function runMain({ argv, env, log = (s) => console.log(s), opts = {} } = {
         "  - GOOGLE_APPLICATION_CREDENTIALS : Vertex AI サービスアカウント JSON のパス",
     );
   }
-  const model = modelArg || env.GEMINI_MODEL || "gemini-3.5-flash";
+  const model = modelArg || env.GEMINI_MODEL || DEFAULT_MODELS[mode];
 
   const j =
     mode === "aistudio"
@@ -269,6 +277,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  DEFAULT_MODELS,
   GsearchError,
   b64urlFromBuffer,
   b64urlFromString,
