@@ -19,7 +19,7 @@
 const { webcrypto } = require("node:crypto");
 const fs = require("node:fs");
 
-const REQUEST_TIMEOUT_MS = 60000; // メイン API
+const REQUEST_TIMEOUT_MS = 120000; // メイン API
 const OAUTH_TIMEOUT_MS = 15000; //   OAuth2 token 取得
 const RESOLVE_TIMEOUT_MS = 5000; //   redirect 解決の HEAD
 const MAX_SOURCES = 8;
